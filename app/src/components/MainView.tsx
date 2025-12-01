@@ -208,7 +208,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
         <div className="flex-1">
           <a className="btn btn-ghost text-xl flex items-center gap-2">
             <img src={logoUrl} alt="Narri" className="h-12 pb-2" />
-            <span>Narri</span>
+            <span>Narrative</span>
           </a>
         </div>
         <div className="flex-none gap-2">

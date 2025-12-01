@@ -34,10 +34,14 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   const narri = useOpinionGraph(documentId, docHandle, currentUserDid);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
-  const [sortBy, setSortBy] = useState<'votes' | 'agree' | 'recent'>('recent');
+  const [sortBy, setSortBy] = useState<'votes' | 'agree' | 'recent' | 'created'>('created');
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const [nameInput, setNameInput] = useState('');
-  const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importError, setImportError] = useState('');
+  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+  const logoUrl = `${import.meta.env.BASE_URL}narri.png`;
 
   const sortedAssumptions = useMemo(() => {
     if (!narri) return [];
@@ -52,7 +56,11 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
       );
     };
 
-    return [...narri.assumptions].sort((a, b) => {
+    const filtered = activeTagFilter
+      ? narri.assumptions.filter((a) => a.tagIds.includes(activeTagFilter))
+      : narri.assumptions;
+
+    return [...filtered].sort((a, b) => {
       const summaryA = narri.getVoteSummary(a.id);
       const summaryB = narri.getVoteSummary(b.id);
 
@@ -69,10 +77,13 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
       if (sortBy === 'agree') {
         return agreeRateB - agreeRateA || totalB - totalA || lastVoteB - lastVoteA || b.createdAt - a.createdAt;
       }
+      if (sortBy === 'created') {
+        return b.createdAt - a.createdAt || lastVoteB - lastVoteA || totalB - totalA;
+      }
       // recent
       return lastVoteB - lastVoteA || totalB - totalA || agreeRateB - agreeRateA || b.createdAt - a.createdAt;
     });
-  }, [narri, sortBy, narri?.doc?.lastModified]);
+  }, [narri, sortBy, narri?.doc?.lastModified, activeTagFilter]);
 
   const handleShareClick = () => {
     const url = window.location.href;
@@ -151,6 +162,33 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
     setShowIdentityModal(false);
   };
 
+  const handleImportAssumptions = () => {
+    if (!narri) return;
+    setImportError('');
+    try {
+      const parsed = JSON.parse(importText || '[]');
+      if (!Array.isArray(parsed)) throw new Error('JSON Array erwartet');
+
+      parsed.forEach((item) => {
+        const sentence = typeof item === 'string' ? item : item?.sentence;
+        const tags =
+          item && Array.isArray(item.tags)
+            ? item.tags.filter((t: unknown) => typeof t === 'string')
+            : [];
+
+        if (sentence && typeof sentence === 'string') {
+          narri.createAssumption(sentence, tags);
+        }
+      });
+
+      setShowImportModal(false);
+      setImportText('');
+    } catch (error) {
+      setImportError('Import fehlgeschlagen. Bitte JSON-Array mit { sentence, tags? } verwenden.');
+      console.error('Import error', error);
+    }
+  };
+
   // Wait for document to load
   if (!narri) {
     return (
@@ -164,12 +202,12 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   }
 
   return (
-    <div className="min-h-screen bg-base-200">
+    <div className="min-h-screen bg-base-200 flex flex-col">
       {/* Navbar */}
-      <div className="navbar bg-base-100 shadow-lg">
+      <div className="navbar bg-base-100 shadow-lg sticky top-0 z-20">
         <div className="flex-1">
           <a className="btn btn-ghost text-xl flex items-center gap-2">
-            <img src={logoUrl} alt="Narri" className="h-8 w-8" />
+            <img src={logoUrl} alt="Narri" className="h-12 pb-2" />
             <span>Narri</span>
           </a>
         </div>
@@ -233,29 +271,42 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto p-4 max-w-6xl">
+      <div className="container mx-auto p-4 max-w-6xl flex-1 overflow-auto w-full">
         <div className="mb-6">
-          <h1 className="text-3xl font-bold text-base-content mb-2">
-            Assumptions
-          </h1>
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <p className="text-base-content opacity-70">
-              Vote on single-sentence assumptions and see what others think
-            </p>
-            <label className="form-control w-full md:w-64">
-              <div className="label py-0">
-                <span className="label-text">Sortieren nach</span>
-              </div>
-              <select
-                className="select select-bordered select-sm"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-              >
-                <option value="recent">Neuster Vote</option>
-                <option value="votes">Anzahl Votes</option>
-                <option value="agree">Zustimmung</option>
-              </select>
-            </label>
+          <div className="flex flex-wrap items-center gap-3 justify-between">
+            <div className="flex flex-wrap gap-2">
+              {activeTagFilter ? (
+                <div className="badge badge-primary gap-1">
+                  <span>{narri.tags.find((t) => t.id === activeTagFilter)?.name ?? 'Tag'}</span>
+                  <button
+                    className="btn btn-ghost btn-xs"
+                    onClick={() => setActiveTagFilter(null)}
+                    aria-label="Filter entfernen"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div className="text-base-content/60 text-sm">Kein Tag-Filter aktiv</div>
+              )}
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="form-control w-full md:w-64">
+                <div className="label py-0">
+                  <span className="label-text">Sortieren nach</span>
+                </div>
+                <select
+                  className="select select-bordered select-sm"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+                >
+                  <option value="recent">Neuster Vote</option>
+                  <option value="votes">Anzahl Votes</option>
+                  <option value="agree">Zustimmung</option>
+                  <option value="created">Neueste Annahme</option>
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -263,8 +314,11 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
           assumptions={sortedAssumptions}
           getVoteSummary={narri.getVoteSummary}
           getVotesForAssumption={narri.getVotesForAssumption}
+          getEditsForAssumption={narri.getEditsForAssumption}
           onVote={narri.setVote}
+          onEdit={narri.updateAssumption}
           tags={narri.tags}
+          onTagClick={(tagId) => setActiveTagFilter((prev) => (prev === tagId ? null : tagId))}
           currentUserId={narri.currentUserDid}
         />
       </div>
@@ -290,6 +344,29 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
           />
         </svg>
         <span>New Assumption</span>
+      </button>
+
+      {/* Import JSON FAB */}
+      <button
+        className="btn btn-outline gap-2 fixed bottom-6 left-6 shadow-lg"
+        onClick={() => setShowImportModal(true)}
+        title="Import JSON"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+          />
+        </svg>
+        <span>Import JSON</span>
       </button>
 
       {/* Identity Modal */}
@@ -355,11 +432,39 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
         </div>
       )}
 
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-xl space-y-4">
+            <h3 className="font-bold text-lg">Assumptions importieren (JSON-Array)</h3>
+            <p className="text-sm text-base-content/70">
+              Erwartet wird ein JSON-Array von Strings oder Objekten mit <code>{"{ sentence, tags? }"}</code>.
+            </p>
+            <textarea
+              className="textarea textarea-bordered w-full h-40"
+              placeholder='z. B. [{"sentence":"Beispiel","tags":["foo","bar"]}]'
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+            />
+            {importError && <div className="text-error text-sm">{importError}</div>}
+            <div className="modal-action">
+              <button className="btn" onClick={() => setShowImportModal(false)}>
+                Abbrechen
+              </button>
+              <button className="btn btn-primary" onClick={handleImportAssumptions}>
+                Importieren
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setShowImportModal(false)}></div>
+        </div>
+      )}
+
       {/* Create Assumption Modal */}
       <CreateAssumptionModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onCreate={narri.createAssumption}
+        onSubmit={narri.createAssumption}
         availableTags={narri.tags}
       />
 

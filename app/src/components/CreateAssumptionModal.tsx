@@ -1,10 +1,13 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Tag } from 'narri-ui';
 
 interface CreateAssumptionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (sentence: string, tags: string[]) => void;
+  onSubmit: (sentence: string, tags: string[]) => void;
+  initialSentence?: string;
+  initialTags?: string[];
+  submitLabel?: string;
   availableTags: Tag[];
 }
 
@@ -14,12 +17,27 @@ interface CreateAssumptionModalProps {
 export function CreateAssumptionModal({
   isOpen,
   onClose,
-  onCreate,
+  onSubmit,
+  initialSentence = '',
+  initialTags = [],
+  submitLabel = 'Create',
   availableTags,
 }: CreateAssumptionModalProps) {
-  const [sentence, setSentence] = useState('');
-  const [tagsInput, setTagsInput] = useState('');
+  const initialTagsString = useMemo(
+    () => (initialTags ?? []).join(', '),
+    // stringify to avoid new array identity resetting inputs
+    [initialTags.map((t) => t.trim().toLowerCase()).join('|')]
+  );
+  const [sentence, setSentence] = useState(initialSentence);
+  const [tagsInput, setTagsInput] = useState(initialTagsString);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSentence(initialSentence);
+      setTagsInput(initialTagsString);
+    }
+  }, [isOpen, initialSentence, initialTagsString]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,9 +51,9 @@ export function CreateAssumptionModal({
 
     setIsSubmitting(true);
     try {
-      onCreate(sentence.trim(), parsedTags);
-      setSentence('');
-      setTagsInput('');
+      onSubmit(sentence.trim(), parsedTags);
+      setSentence(initialSentence);
+      setTagsInput(initialTags.join(', '));
       onClose();
     } catch (error) {
       console.error('Failed to create assumption:', error);
@@ -78,7 +96,7 @@ export function CreateAssumptionModal({
   return (
     <div className="modal modal-open">
       <div className="modal-box">
-        <h3 className="font-bold text-lg mb-4">Create New Assumption</h3>
+        <h3 className="font-bold text-lg mb-4">{submitLabel === 'Create' ? 'Create New Assumption' : 'Annahme bearbeiten'}</h3>
 
         <form onSubmit={handleSubmit}>
           <div className="form-control w-full">
@@ -145,10 +163,10 @@ export function CreateAssumptionModal({
               {isSubmitting ? (
                 <>
                   <span className="loading loading-spinner loading-sm"></span>
-                  Creating...
+                  {submitLabel}...
                 </>
               ) : (
-                'Create'
+                submitLabel
               )}
             </button>
           </div>

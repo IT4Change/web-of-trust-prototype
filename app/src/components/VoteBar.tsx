@@ -28,11 +28,7 @@ export function VoteBar({ summary, votes }: VoteBarProps) {
     const matching = votes.filter((v) => v.value === value);
     if (matching.length === 0) return 'Keine Stimmen';
 
-    const label =
-      value === 'green' ? 'Zustimmung' : value === 'yellow' ? 'Neutral' : 'Ablehnung';
-
     return [
-      label,
       ...matching.map((v) => `${v.voterName ?? v.voterDid} (${v.voterDid})`),
     ].join('\n');
   };

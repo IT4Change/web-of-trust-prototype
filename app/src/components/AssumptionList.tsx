@@ -1,12 +1,15 @@
-import { Assumption, Tag, Vote, VoteValue } from 'narri-ui';
+import { Assumption, Tag, Vote, VoteValue, EditEntry } from 'narri-ui';
 import { AssumptionCard } from './AssumptionCard';
 
 interface AssumptionListProps {
   assumptions: (Assumption | null)[];
   getVoteSummary: (assumptionId: string) => any;
   getVotesForAssumption: (assumptionId: string) => Vote[];
+  getEditsForAssumption: (assumptionId: string) => EditEntry[];
   onVote: (assumptionId: string, value: VoteValue) => void;
+  onEdit: (assumptionId: string, newSentence: string, tags: string[]) => void;
   tags: Tag[];
+  onTagClick?: (tagId: string) => void;
   currentUserId?: string;
 }
 
@@ -17,8 +20,11 @@ export function AssumptionList({
   assumptions,
   getVoteSummary,
   getVotesForAssumption,
+  getEditsForAssumption,
   onVote,
+  onEdit,
   tags,
+  onTagClick,
   currentUserId,
 }: AssumptionListProps) {
   const validAssumptions = assumptions.filter((a): a is Assumption => a !== null);
@@ -45,9 +51,13 @@ export function AssumptionList({
           key={assumption.id}
           assumption={assumption}
           votes={getVotesForAssumption(assumption.id)}
+          edits={getEditsForAssumption(assumption.id)}
           tags={assumption.tagIds.map((id) => tagMap[id]).filter((t): t is Tag => !!t)}
+          availableTags={tags}
           voteSummary={getVoteSummary(assumption.id)}
           onVote={onVote}
+          onEdit={onEdit}
+          onTagClick={onTagClick}
           currentUserId={currentUserId}
         />
       ))}

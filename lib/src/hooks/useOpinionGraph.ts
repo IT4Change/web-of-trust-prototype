@@ -61,11 +61,31 @@ export function useOpinionGraph(
         id,
         sentence,
         createdBy: currentUserDid,
+        creatorName: d.identities?.[currentUserDid]?.displayName || d.identity.displayName,
         createdAt: Date.now(),
         updatedAt: Date.now(),
         tagIds,
         voteIds: [],
+        editLogIds: [],
       };
+
+      if (!d.edits) d.edits = {};
+      const editId = generateId();
+      d.edits[editId] = {
+        id: editId,
+        assumptionId: id,
+        editorDid: currentUserDid,
+        editorName: assumption.creatorName,
+        type: 'create',
+        previousSentence: '',
+        newSentence: sentence,
+        previousTags: [],
+        newTags: tagNames,
+        createdAt: Date.now(),
+      };
+      assumption.editLogIds.push(editId);
+      // Sorting stability: newest first by log order
+      assumption.editLogIds.sort((a, b) => b.localeCompare(a));
 
       d.assumptions[id] = assumption;
       d.lastModified = Date.now();
@@ -75,15 +95,56 @@ export function useOpinionGraph(
   /**
    * Update an assumption
    */
-  const updateAssumption = (
-    assumptionId: string,
-    updates: Partial<Pick<Assumption, 'sentence'>>
-  ) => {
+  const updateAssumption = (assumptionId: string, newSentence: string, tagNames: string[] = []) => {
     docHandle.change((d) => {
       const assumption = d.assumptions[assumptionId];
       if (!assumption) return;
 
-      if (updates.sentence !== undefined) assumption.sentence = updates.sentence;
+      const trimmed = newSentence.trim();
+      const newTagIds = tagNames
+        .map((tag) => findOrCreateTag(d, tag))
+        .filter((tagId): tagId is string => !!tagId);
+      const currentTagIdsSorted = [...assumption.tagIds].sort().join('|');
+      const newTagIdsSorted = [...newTagIds].sort().join('|');
+
+      const sentenceChanged = trimmed && trimmed !== assumption.sentence;
+      const tagsChanged = currentTagIdsSorted !== newTagIdsSorted;
+
+      if (!sentenceChanged && !tagsChanged) return;
+
+      if (!assumption.editLogIds) assumption.editLogIds = [];
+      if (!d.edits) d.edits = {};
+
+      const previousTagNames = assumption.tagIds
+        .map((id) => d.tags[id])
+        .filter((t): t is NonNullable<typeof d.tags[string]> => Boolean(t))
+        .map((t) => t.name);
+
+      assumption.tagIds = newTagIds;
+
+      const editId = generateId();
+      const entry: any = {
+        id: editId,
+        assumptionId,
+        editorDid: currentUserDid,
+        previousSentence: assumption.sentence,
+        newSentence: trimmed,
+        createdAt: Date.now(),
+        type: 'edit',
+        previousTags: previousTagNames,
+        newTags: tagNames,
+      };
+
+      const editorName =
+        d.identities?.[currentUserDid]?.displayName || d.identity.displayName;
+      if (editorName) {
+        entry.editorName = editorName;
+      }
+
+      d.edits[editId] = entry;
+      assumption.editLogIds.push(editId);
+
+      assumption.sentence = trimmed;
       assumption.updatedAt = Date.now();
       d.lastModified = Date.now();
     });
@@ -257,6 +318,19 @@ export function useOpinionGraph(
   };
 
   /**
+   * Get all edits for an assumption, sorted by newest first
+   */
+  const getEditsForAssumption = (assumptionId: string) => {
+    const assumption = doc.assumptions[assumptionId];
+    if (!assumption || !assumption.editLogIds) return [];
+
+    return assumption.editLogIds
+      .map((id) => doc.edits[id])
+      .filter((e): e is NonNullable<typeof doc.edits[string]> => Boolean(e))
+      .sort((a, b) => b.createdAt - a.createdAt);
+  };
+
+  /**
    * Update user identity
    */
   const updateIdentity = (updates: Partial<Omit<typeof doc.identity, 'did'>>) => {
@@ -314,6 +388,7 @@ export function useOpinionGraph(
     // Helpers
     getVoteSummary,
     getVotesForAssumption,
+    getEditsForAssumption,
   };
 }
 

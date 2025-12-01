@@ -101,8 +101,9 @@ export function NarriApp() {
     localStorage.setItem('narriDocId', docId);
 
     // Push new hash so back button returns to previous board
-    const newUrl = `${window.location.pathname}#doc=${docId}`;
-    window.history.pushState(null, '', newUrl);
+    const url = new URL(window.location.href);
+    url.hash = `doc=${docId}`;
+    window.history.pushState(null, '', url.toString());
     setDocumentId(docId);
   };
 

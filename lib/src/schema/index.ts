@@ -55,6 +55,22 @@ export interface Vote {
 }
 
 /**
+ * Edit log entry for an assumption
+ */
+export interface EditEntry {
+  id: string;
+  assumptionId: string;
+  editorDid: string;
+  editorName?: string;
+  type: 'create' | 'edit';
+  previousSentence: string;
+  newSentence: string;
+  previousTags?: string[];
+  newTags?: string[];
+  createdAt: number;
+}
+
+/**
  * Core Assumption entity
  * Represents a statement (single sentence) that can be voted on
  */
@@ -62,10 +78,12 @@ export interface Assumption {
   id: string;
   sentence: string;
   createdBy: string; // DID
+  creatorName?: string;
   createdAt: number;
   updatedAt: number;
   tagIds: string[];
   voteIds: string[];
+  editLogIds: string[];
 }
 
 /**
@@ -81,6 +99,7 @@ export interface OpinionGraphDoc {
   assumptions: Record<string, Assumption>;
   votes: Record<string, Vote>;
   tags: Record<string, Tag>;
+  edits: Record<string, EditEntry>;
 
   // Metadata
   version: string;
@@ -138,19 +157,23 @@ export function computeVoteSummary(
  * Create an empty Narri document
  */
 export function createEmptyDoc(identity: UserIdentity): OpinionGraphDoc {
+  const identities: Record<string, IdentityProfile> = {};
+  if (identity.did) {
+    const profile: IdentityProfile = {};
+    if (identity.displayName !== undefined) profile.displayName = identity.displayName;
+    if (identity.avatarUrl !== undefined) profile.avatarUrl = identity.avatarUrl;
+    if (Object.keys(profile).length > 0) {
+      identities[identity.did] = profile;
+    }
+  }
+
   return {
     identity,
-    identities: identity.did
-      ? {
-          [identity.did]: {
-            displayName: identity.displayName,
-            avatarUrl: identity.avatarUrl,
-          },
-        }
-      : {},
+    identities,
     assumptions: {},
     votes: {},
     tags: {},
+    edits: {},
     version: '0.1.0',
     lastModified: Date.now(),
   };

@@ -37,6 +37,41 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   const [sortBy, setSortBy] = useState<'votes' | 'agree' | 'recent'>('recent');
   const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
 
+  const sortedAssumptions = useMemo(() => {
+    if (!narri) return [];
+
+    const getLastVoteTs = (assumptionId: string) => {
+      const votes = narri.doc.votes;
+      return (
+        narri.doc.assumptions[assumptionId]?.voteIds
+          .map((id) => votes[id])
+          .filter((v): v is NonNullable<typeof votes[string]> => Boolean(v))
+          .reduce((latest, vote) => Math.max(latest, vote.updatedAt ?? vote.createdAt), 0) || 0
+      );
+    };
+
+    return [...narri.assumptions].sort((a, b) => {
+      const summaryA = narri.getVoteSummary(a.id);
+      const summaryB = narri.getVoteSummary(b.id);
+
+      const totalA = summaryA.total;
+      const totalB = summaryB.total;
+      const agreeRateA = totalA ? summaryA.green / totalA : 0;
+      const agreeRateB = totalB ? summaryB.green / totalB : 0;
+      const lastVoteA = getLastVoteTs(a.id);
+      const lastVoteB = getLastVoteTs(b.id);
+
+      if (sortBy === 'votes') {
+        return totalB - totalA || agreeRateB - agreeRateA || lastVoteB - lastVoteA || b.createdAt - a.createdAt;
+      }
+      if (sortBy === 'agree') {
+        return agreeRateB - agreeRateA || totalB - totalA || lastVoteB - lastVoteA || b.createdAt - a.createdAt;
+      }
+      // recent
+      return lastVoteB - lastVoteA || totalB - totalA || agreeRateB - agreeRateA || b.createdAt - a.createdAt;
+    });
+  }, [narri, sortBy, narri?.doc?.lastModified]);
+
   const handleShareClick = () => {
     const url = window.location.href;
     navigator.clipboard.writeText(url).then(() => {
@@ -98,41 +133,6 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
       </div>
     );
   }
-
-  const sortedAssumptions = useMemo(() => {
-    if (!narri) return [];
-
-    const getLastVoteTs = (assumptionId: string) => {
-      const votes = narri.doc.votes;
-      return (
-        narri.doc.assumptions[assumptionId]?.voteIds
-          .map((id) => votes[id])
-          .filter((v): v is NonNullable<typeof votes[string]> => Boolean(v))
-          .reduce((latest, vote) => Math.max(latest, vote.updatedAt ?? vote.createdAt), 0) || 0
-      );
-    };
-
-    return [...narri.assumptions].sort((a, b) => {
-      const summaryA = narri.getVoteSummary(a.id);
-      const summaryB = narri.getVoteSummary(b.id);
-
-      const totalA = summaryA.total;
-      const totalB = summaryB.total;
-      const agreeRateA = totalA ? summaryA.green / totalA : 0;
-      const agreeRateB = totalB ? summaryB.green / totalB : 0;
-      const lastVoteA = getLastVoteTs(a.id);
-      const lastVoteB = getLastVoteTs(b.id);
-
-      if (sortBy === 'votes') {
-        return totalB - totalA || agreeRateB - agreeRateA || lastVoteB - lastVoteA || b.createdAt - a.createdAt;
-      }
-      if (sortBy === 'agree') {
-        return agreeRateB - agreeRateA || totalB - totalA || lastVoteB - lastVoteA || b.createdAt - a.createdAt;
-      }
-      // recent
-      return lastVoteB - lastVoteA || totalB - totalA || agreeRateB - agreeRateA || b.createdAt - a.createdAt;
-    });
-  }, [narri, sortBy, narri?.doc?.lastModified]);
 
   return (
     <div className="min-h-screen bg-base-200">

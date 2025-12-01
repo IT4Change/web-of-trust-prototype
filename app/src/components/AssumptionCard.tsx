@@ -141,9 +141,12 @@ export function AssumptionCard({
                     >
                       {vote.value === 'green' ? '🟢' : vote.value === 'yellow' ? '🟡' : '🔴'}
                     </span>
-                    <span className="truncate" title={vote.voterDid}>
-                      {vote.voterDid}
-                    </span>
+                    <div className="flex flex-col leading-tight">
+                      <span className="font-semibold">
+                        {vote.voterName ?? vote.voterDid}
+                      </span>
+                      <span className="text-xs text-base-content/60 break-all">{vote.voterDid}</span>
+                    </div>
                     <span className="text-xs text-base-content/60">
                       {new Date(vote.updatedAt ?? vote.createdAt).toLocaleString()}
                     </span>

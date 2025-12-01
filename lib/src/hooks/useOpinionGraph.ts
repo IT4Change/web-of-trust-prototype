@@ -117,6 +117,9 @@ export function useOpinionGraph(
       const assumption = d.assumptions[assumptionId];
       if (!assumption) return;
 
+      const voterName =
+        d.identities?.[currentUserDid]?.displayName || d.identity.displayName;
+
       // Find existing vote by current user
       const existingVoteId = assumption.voteIds.find((voteId) => {
         const vote = d.votes[voteId];
@@ -128,6 +131,7 @@ export function useOpinionGraph(
         const vote = d.votes[existingVoteId];
         if (vote) {
           vote.value = value;
+          if (voterName) vote.voterName = voterName;
           vote.updatedAt = Date.now();
         }
       } else {
@@ -137,6 +141,7 @@ export function useOpinionGraph(
           id: voteId,
           assumptionId,
           voterDid: currentUserDid,
+          voterName,
           value,
           createdAt: Date.now(),
           updatedAt: Date.now(),
@@ -258,6 +263,23 @@ export function useOpinionGraph(
     docHandle.change((d) => {
       if (updates.displayName !== undefined) {
         d.identity.displayName = updates.displayName;
+        d.identities = d.identities || {};
+        d.identities[currentUserDid] = d.identities[currentUserDid] || {};
+        if (updates.displayName === '') {
+          delete d.identities[currentUserDid].displayName;
+        } else {
+          d.identities[currentUserDid].displayName = updates.displayName;
+        }
+        // Propagate to current user's votes so name shows in logs/tooltips
+        Object.values(d.votes).forEach((vote) => {
+          if (vote.voterDid === currentUserDid) {
+            if (updates.displayName === '') {
+              delete vote.voterName;
+            } else {
+              vote.voterName = updates.displayName;
+            }
+          }
+        });
       }
       if (updates.avatarUrl !== undefined) {
         if (updates.avatarUrl === '') {

@@ -3,7 +3,7 @@ import { useRepo } from '@automerge/automerge-repo-react-hooks';
 import { useOpinionGraph, type OpinionGraphDoc } from 'narri-ui';
 import { AssumptionList } from './AssumptionList';
 import { CreateAssumptionModal } from './CreateAssumptionModal';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Avatar from 'boring-avatars';
 
 interface MainViewProps {
@@ -35,6 +35,8 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   const [sortBy, setSortBy] = useState<'votes' | 'agree' | 'recent'>('recent');
+  const [showIdentityModal, setShowIdentityModal] = useState(false);
+  const [nameInput, setNameInput] = useState('');
   const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
 
   const sortedAssumptions = useMemo(() => {
@@ -80,6 +82,14 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
     });
   };
 
+  useEffect(() => {
+    const name =
+      narri?.doc.identities?.[currentUserDid]?.displayName ??
+      narri?.doc.identity.displayName ??
+      '';
+    setNameInput(name);
+  }, [narri?.doc.identities, narri?.doc.identity.displayName, currentUserDid]);
+
   const handleExportIdentity = () => {
     const savedIdentity = localStorage.getItem('narriIdentity');
     if (!savedIdentity) return;
@@ -120,6 +130,19 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
       reader.readAsText(file);
     };
     input.click();
+  };
+
+  const handleSaveName = () => {
+    const next = nameInput.trim();
+    if (!next) return;
+    narri.updateIdentity({ displayName: next });
+    const storedIdentity = localStorage.getItem('narriIdentity');
+    if (storedIdentity) {
+      const parsed = JSON.parse(storedIdentity);
+      parsed.displayName = next;
+      localStorage.setItem('narriIdentity', JSON.stringify(parsed));
+    }
+    setShowIdentityModal(false);
   };
 
   // Wait for document to load
@@ -186,91 +209,20 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
             </svg>
             New Board
           </button>
-          <div className="dropdown dropdown-end">
-            <div tabIndex={0} role="button" className="btn btn-ghost btn-circle avatar">
-              <div className="w-12 rounded-full overflow-hidden">
-                <Avatar
-                  size={48}
-                  name={hashString(currentUserDid)}
-                  variant="marble"
-                  colors={["#fdbf5c", "#f69a0b", "#d43a00", "#9b0800", "#1d2440"]}
-                />
-              </div>
+          <button
+            className="btn btn-ghost btn-circle avatar"
+            onClick={() => setShowIdentityModal(true)}
+            title="Identity"
+          >
+            <div className="w-12 rounded-full overflow-hidden">
+              <Avatar
+                size={48}
+                name={hashString(currentUserDid)}
+                variant="marble"
+                colors={["#fdbf5c", "#f69a0b", "#d43a00", "#9b0800", "#1d2440"]}
+              />
             </div>
-            <ul
-              tabIndex={0}
-              className="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52"
-            >
-              <li>
-                <a className="justify-between flex-col items-start">
-                  <div className="flex w-full justify-between items-center">
-                    <span>Your Identity</span>
-                    <span className="badge badge-sm">DID</span>
-                  </div>
-                  <code className="text-xs opacity-60 mt-1 break-all">
-                    {currentUserDid.substring(0, 30)}...
-                  </code>
-                </a>
-              </li>
-              <li>
-                <a onClick={handleExportIdentity}>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                    />
-                  </svg>
-                  Export Identity
-                </a>
-              </li>
-              <li>
-                <a onClick={handleImportIdentity}>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                    />
-                  </svg>
-                  Import Identity
-                </a>
-              </li>
-              <li>
-                <a onClick={onResetId} className="text-error">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                    />
-                  </svg>
-                  Reset ID
-                </a>
-              </li>
-            </ul>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -333,6 +285,69 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
         </svg>
         <span>New Assumption</span>
       </button>
+
+      {/* Identity Modal */}
+      {showIdentityModal && (
+        <div className="modal modal-open">
+          <div className="modal-box max-w-md space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-full overflow-hidden">
+                <Avatar
+                  size={56}
+                  name={hashString(currentUserDid)}
+                  variant="marble"
+                  colors={["#fdbf5c", "#f69a0b", "#d43a00", "#9b0800", "#1d2440"]}
+                />
+              </div>
+              <div>
+                <div className="text-sm text-base-content/70">Deine DID</div>
+                <code className="text-xs break-all">{currentUserDid}</code>
+              </div>
+            </div>
+
+            <div className="form-control">
+              <label className="label">
+                <span className="label-text">Anzeigename</span>
+              </label>
+              <input
+                type="text"
+                className="input input-bordered"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                placeholder="Dein Name"
+              />
+              <label className="label">
+              <span className="label-text-alt text-base-content/60">
+                Wird lokal gespeichert und mit deinem DID geteilt.
+              </span>
+              </label>
+              <button className="btn btn-primary btn-sm w-fit mt-2" onClick={handleSaveName}>
+                Speichern
+              </button>
+            </div>
+
+            <div className="divider">Identity</div>
+            <div className="flex flex-col gap-2">
+              <button className="btn btn-outline btn-sm" onClick={handleExportIdentity}>
+                Export Identity
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={handleImportIdentity}>
+                Import Identity
+              </button>
+              <button className="btn btn-error btn-sm" onClick={onResetId}>
+                Reset ID
+              </button>
+            </div>
+
+            <div className="modal-action">
+              <button className="btn" onClick={() => setShowIdentityModal(false)}>
+                Schließen
+              </button>
+            </div>
+          </div>
+          <div className="modal-backdrop" onClick={() => setShowIdentityModal(false)}></div>
+        </div>
+      )}
 
       {/* Create Assumption Modal */}
       <CreateAssumptionModal

@@ -1,5 +1,5 @@
 {
-  "name": "opinion-graph-app",
+  "name": "narri-app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "@automerge/automerge-repo-react-hooks": "^1.2.1",
     "@automerge/automerge-repo-storage-indexeddb": "^1.2.1",
     "boring-avatars": "^2.0.4",
-    "opinion-graph-ui": "*",
+    "narri-ui": "*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },

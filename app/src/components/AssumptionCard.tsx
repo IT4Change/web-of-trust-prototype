@@ -1,8 +1,9 @@
-import { Assumption, VoteValue, VoteSummary } from 'opinion-graph-ui';
+import { Assumption, Tag, VoteValue, VoteSummary } from 'narri-ui';
 import { VoteBar } from './VoteBar';
 
 interface AssumptionCardProps {
   assumption: Assumption;
+  tags: Tag[];
   voteSummary: VoteSummary;
   onVote: (assumptionId: string, value: VoteValue) => void;
   currentUserId?: string; // Currently unused but kept for future features
@@ -13,6 +14,7 @@ interface AssumptionCardProps {
  */
 export function AssumptionCard({
   assumption,
+  tags,
   voteSummary,
   onVote,
 }: AssumptionCardProps) {
@@ -23,10 +25,18 @@ export function AssumptionCard({
   return (
     <div className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
       <div className="card-body">
-        <h2 className="card-title text-xl">{assumption.title}</h2>
+        <p className="text-lg font-semibold text-base-content leading-relaxed">
+          {assumption.sentence}
+        </p>
 
-        {assumption.description && (
-          <p className="text-base-content opacity-70">{assumption.description}</p>
+        {tags.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {tags.map((tag) => (
+              <div key={tag.id} className="badge badge-outline">
+                {tag.name}
+              </div>
+            ))}
+          </div>
         )}
 
         {/* Vote Bar */}

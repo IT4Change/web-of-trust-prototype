@@ -1,4 +1,4 @@
-import { VoteSummary } from 'opinion-graph-ui';
+import { VoteSummary } from 'narri-ui';
 
 interface VoteBarProps {
   summary: VoteSummary;

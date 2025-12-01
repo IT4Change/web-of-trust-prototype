@@ -1,6 +1,6 @@
 import { DocumentId } from '@automerge/automerge-repo';
 import { useRepo } from '@automerge/automerge-repo-react-hooks';
-import { useOpinionGraph, type OpinionGraphDoc } from 'opinion-graph-ui';
+import { useOpinionGraph, type OpinionGraphDoc } from 'narri-ui';
 import { AssumptionList } from './AssumptionList';
 import { CreateAssumptionModal } from './CreateAssumptionModal';
 import { useState } from 'react';
@@ -30,7 +30,7 @@ function hashString(str: string): string {
 export function MainView({ documentId, currentUserDid, onReset }: MainViewProps) {
   const repo = useRepo();
   const docHandle = repo.find<OpinionGraphDoc>(documentId);
-  const opinionGraph = useOpinionGraph(documentId, docHandle, currentUserDid);
+  const narri = useOpinionGraph(documentId, docHandle, currentUserDid);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
 
@@ -43,7 +43,7 @@ export function MainView({ documentId, currentUserDid, onReset }: MainViewProps)
   };
 
   const handleExportIdentity = () => {
-    const savedIdentity = localStorage.getItem('opinionGraphIdentity');
+    const savedIdentity = localStorage.getItem('narriIdentity');
     if (!savedIdentity) return;
 
     const blob = new Blob([savedIdentity], { type: 'application/json' });
@@ -70,7 +70,7 @@ export function MainView({ documentId, currentUserDid, onReset }: MainViewProps)
         try {
           const identity = JSON.parse(event.target?.result as string);
           if (identity.did && identity.displayName) {
-            localStorage.setItem('opinionGraphIdentity', JSON.stringify(identity));
+            localStorage.setItem('narriIdentity', JSON.stringify(identity));
             window.location.reload();
           } else {
             alert('Invalid identity file');
@@ -85,7 +85,7 @@ export function MainView({ documentId, currentUserDid, onReset }: MainViewProps)
   };
 
   // Wait for document to load
-  if (!opinionGraph) {
+  if (!narri) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-base-200">
         <div className="text-center">
@@ -101,7 +101,7 @@ export function MainView({ documentId, currentUserDid, onReset }: MainViewProps)
       {/* Navbar */}
       <div className="navbar bg-base-100 shadow-lg">
         <div className="flex-1">
-          <a className="btn btn-ghost text-xl">Opinion Graph</a>
+          <a className="btn btn-ghost text-xl">Narri</a>
         </div>
         <div className="flex-none gap-2">
           <button
@@ -243,15 +243,16 @@ export function MainView({ documentId, currentUserDid, onReset }: MainViewProps)
             Assumptions
           </h1>
           <p className="text-base-content opacity-70">
-            Vote on assumptions and see what others think
+            Vote on single-sentence assumptions and see what others think
           </p>
         </div>
 
         <AssumptionList
-          assumptions={opinionGraph.assumptions}
-          getVoteSummary={opinionGraph.getVoteSummary}
-          onVote={opinionGraph.setVote}
-          currentUserId={opinionGraph.currentUserDid}
+          assumptions={narri.assumptions}
+          getVoteSummary={narri.getVoteSummary}
+          onVote={narri.setVote}
+          tags={narri.tags}
+          currentUserId={narri.currentUserDid}
         />
       </div>
 
@@ -259,7 +260,7 @@ export function MainView({ documentId, currentUserDid, onReset }: MainViewProps)
       <CreateAssumptionModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onCreate={opinionGraph.createAssumption}
+        onCreate={narri.createAssumption}
       />
 
       {/* Toast for copied URL */}

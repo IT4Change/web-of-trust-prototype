@@ -9,7 +9,7 @@ import {
 } from '../schema';
 
 /**
- * Main hook for accessing and mutating Opinion Graph data
+ * Main hook for accessing and mutating Narri data
  * Uses Automerge CRDT for automatic conflict resolution
  */
 export function useOpinionGraph(
@@ -27,26 +27,44 @@ export function useOpinionGraph(
   const assumptions = Object.values(doc.assumptions);
   const tags = Object.values(doc.tags);
 
+  const findOrCreateTag = (d: OpinionGraphDoc, name: string): string => {
+    const normalized = name.trim().toLowerCase();
+    if (!normalized) return '';
+
+    const existing = Object.values(d.tags).find(
+      (tag) => tag.name.trim().toLowerCase() === normalized
+    );
+    if (existing) return existing.id;
+
+    const tagId = generateId();
+    d.tags[tagId] = {
+      id: tagId,
+      name: name.trim(),
+      createdBy: currentUserDid,
+      createdAt: Date.now(),
+    };
+    return tagId;
+  };
+
   /**
    * Create a new assumption
    */
-  const createAssumption = (title: string, description?: string) => {
+  const createAssumption = (sentence: string, tagNames: string[] = []) => {
     docHandle.change((d) => {
       const id = generateId();
+      const tagIds = tagNames
+        .map((tag) => findOrCreateTag(d, tag))
+        .filter((tagId): tagId is string => !!tagId);
+
       const assumption: any = {
         id,
-        title,
+        sentence,
         createdBy: currentUserDid,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        tagIds: [],
+        tagIds,
         voteIds: [],
       };
-
-      // Only add description if provided (Automerge doesn't allow undefined)
-      if (description !== undefined && description !== '') {
-        assumption.description = description;
-      }
 
       d.assumptions[id] = assumption;
       d.lastModified = Date.now();
@@ -58,20 +76,13 @@ export function useOpinionGraph(
    */
   const updateAssumption = (
     assumptionId: string,
-    updates: Partial<Pick<Assumption, 'title' | 'description'>>
+    updates: Partial<Pick<Assumption, 'sentence'>>
   ) => {
     docHandle.change((d) => {
       const assumption = d.assumptions[assumptionId];
       if (!assumption) return;
 
-      if (updates.title !== undefined) assumption.title = updates.title;
-      if (updates.description !== undefined) {
-        if (updates.description === '') {
-          delete assumption.description;
-        } else {
-          assumption.description = updates.description;
-        }
-      }
+      if (updates.sentence !== undefined) assumption.sentence = updates.sentence;
       assumption.updatedAt = Date.now();
       d.lastModified = Date.now();
     });

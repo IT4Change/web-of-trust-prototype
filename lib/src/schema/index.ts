@@ -1,7 +1,7 @@
 /**
- * Opinion Graph Data Schema for Automerge
+ * Narri data schema for Automerge.
  *
- * This defines the TypeScript types for the CRDT document structure.
+ * Defines the TypeScript types for the CRDT document structure.
  * Automerge automatically handles conflict resolution and syncing.
  */
 
@@ -47,12 +47,11 @@ export interface Vote {
 
 /**
  * Core Assumption entity
- * Represents a statement that can be voted on
+ * Represents a statement (single sentence) that can be voted on
  */
 export interface Assumption {
   id: string;
-  title: string;
-  description?: string;
+  sentence: string;
   createdBy: string; // DID
   createdAt: number;
   updatedAt: number;
@@ -126,7 +125,7 @@ export function computeVoteSummary(
 }
 
 /**
- * Create an empty Opinion Graph document
+ * Create an empty Narri document
  */
 export function createEmptyDoc(identity: UserIdentity): OpinionGraphDoc {
   return {

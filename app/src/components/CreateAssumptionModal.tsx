@@ -3,7 +3,7 @@ import { useState } from 'react';
 interface CreateAssumptionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (title: string, description?: string) => void;
+  onCreate: (sentence: string, tags: string[]) => void;
 }
 
 /**
@@ -14,20 +14,25 @@ export function CreateAssumptionModal({
   onClose,
   onCreate,
 }: CreateAssumptionModalProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [sentence, setSentence] = useState('');
+  const [tagsInput, setTagsInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!title.trim()) return;
+    if (!sentence.trim()) return;
+
+    const parsedTags = tagsInput
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
 
     setIsSubmitting(true);
     try {
-      onCreate(title.trim(), description.trim() || undefined);
-      setTitle('');
-      setDescription('');
+      onCreate(sentence.trim(), parsedTags);
+      setSentence('');
+      setTagsInput('');
       onClose();
     } catch (error) {
       console.error('Failed to create assumption:', error);
@@ -46,14 +51,14 @@ export function CreateAssumptionModal({
         <form onSubmit={handleSubmit}>
           <div className="form-control w-full">
             <label className="label">
-              <span className="label-text">Title *</span>
+              <span className="label-text">Statement *</span>
             </label>
             <input
               type="text"
-              placeholder="Enter assumption title"
+              placeholder="Enter a single-sentence assumption"
               className="input input-bordered w-full"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              value={sentence}
+              onChange={(e) => setSentence(e.target.value)}
               required
               autoFocus
             />
@@ -61,14 +66,20 @@ export function CreateAssumptionModal({
 
           <div className="form-control w-full mt-4">
             <label className="label">
-              <span className="label-text">Description (optional)</span>
+              <span className="label-text">Tags (comma separated)</span>
             </label>
-            <textarea
-              className="textarea textarea-bordered h-24"
-              placeholder="Add more details..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            ></textarea>
+            <input
+              type="text"
+              className="input input-bordered w-full"
+              placeholder="e.g. climate, policy, energy"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+            />
+            <label className="label">
+              <span className="label-text-alt opacity-60">
+                Separate tags with commas; new tags are created automatically.
+              </span>
+            </label>
           </div>
 
           <div className="modal-action">
@@ -83,7 +94,7 @@ export function CreateAssumptionModal({
             <button
               type="submit"
               className="btn btn-primary"
-              disabled={!title.trim() || isSubmitting}
+              disabled={!sentence.trim() || isSubmitting}
             >
               {isSubmitting ? (
                 <>

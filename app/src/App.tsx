@@ -2,7 +2,7 @@ import { Repo } from '@automerge/automerge-repo';
 import { BrowserWebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket';
 import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
 import { RepoContext } from '@automerge/automerge-repo-react-hooks';
-import { OpinionGraphApp } from './OpinionGraphApp';
+import { NarriApp } from './NarriApp';
 
 // Create Automerge Repo with browser adapters
 const repo = new Repo({
@@ -16,7 +16,7 @@ const repo = new Repo({
 function App() {
   return (
     <RepoContext.Provider value={repo}>
-      <OpinionGraphApp />
+      <NarriApp />
     </RepoContext.Provider>
   );
 }

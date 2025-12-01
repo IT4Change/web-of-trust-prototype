@@ -1,10 +1,11 @@
-import { Assumption, VoteValue } from 'opinion-graph-ui';
+import { Assumption, Tag, VoteValue } from 'narri-ui';
 import { AssumptionCard } from './AssumptionCard';
 
 interface AssumptionListProps {
   assumptions: (Assumption | null)[];
   getVoteSummary: (assumptionId: string) => any;
   onVote: (assumptionId: string, value: VoteValue) => void;
+  tags: Tag[];
   currentUserId?: string;
 }
 
@@ -15,9 +16,14 @@ export function AssumptionList({
   assumptions,
   getVoteSummary,
   onVote,
+  tags,
   currentUserId,
 }: AssumptionListProps) {
   const validAssumptions = assumptions.filter((a): a is Assumption => a !== null);
+  const tagMap = tags.reduce<Record<string, Tag>>((acc, tag) => {
+    acc[tag.id] = tag;
+    return acc;
+  }, {});
 
   if (validAssumptions.length === 0) {
     return (
@@ -36,6 +42,7 @@ export function AssumptionList({
         <AssumptionCard
           key={assumption.id}
           assumption={assumption}
+          tags={assumption.tagIds.map((id) => tagMap[id]).filter((t): t is Tag => !!t)}
           voteSummary={getVoteSummary(assumption.id)}
           onVote={onVote}
           currentUserId={currentUserId}

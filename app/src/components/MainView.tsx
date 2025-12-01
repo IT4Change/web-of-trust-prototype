@@ -167,8 +167,8 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
             Share
           </button>
           <button
-            className="btn btn-primary btn-sm"
-            onClick={() => setIsCreateModalOpen(true)}
+            className="btn btn-outline btn-sm"
+            onClick={onNewBoard}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -181,10 +181,10 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={2}
-                d="M12 4v16m8-8H4"
+                d="M12 6v12m6-6H6"
               />
             </svg>
-            New Assumption
+            New Board
           </button>
           <div className="dropdown dropdown-end">
             <div tabIndex={0} role="button" className="btn btn-ghost btn-circle avatar">
@@ -250,30 +250,8 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
                   Import Identity
                 </a>
               </li>
-              <li className="menu-title">
-                <span>Board & Identity</span>
-              </li>
               <li>
-                <a onClick={onResetId}>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-4 w-4"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 6v12m6-6H6"
-                    />
-                  </svg>
-                  Reset ID
-                </a>
-              </li>
-              <li>
-                <a onClick={onNewBoard} className="text-error">
+                <a onClick={onResetId} className="text-error">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-4 w-4"
@@ -288,7 +266,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
                       d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                     />
                   </svg>
-                  New Board
+                  Reset ID
                 </a>
               </li>
             </ul>
@@ -333,11 +311,35 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
         />
       </div>
 
+      {/* Floating New Assumption Button */}
+      <button
+        className="btn btn-primary gap-2 fixed bottom-6 right-6 shadow-lg shadow-primary/30"
+        onClick={() => setIsCreateModalOpen(true)}
+        title="New Assumption"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M12 4v16m8-8H4"
+          />
+        </svg>
+        <span>New Assumption</span>
+      </button>
+
       {/* Create Assumption Modal */}
       <CreateAssumptionModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={narri.createAssumption}
+        availableTags={narri.tags}
       />
 
       {/* Toast for copied URL */}

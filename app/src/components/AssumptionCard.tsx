@@ -45,11 +45,12 @@ export function AssumptionCard({
 
         {/* Vote Bar */}
         <div className="mt-4">
-          <VoteBar summary={voteSummary} />
+          <VoteBar summary={voteSummary} votes={votes} />
         </div>
 
         {/* Vote Buttons */}
-        <div className="card-actions justify-center items-center mt-4 flex-wrap gap-3">
+        <div className="card-actions w-full items-center mt-4 flex-wrap gap-3">
+          <span className="flex-1" aria-hidden="true"></span>
           <div className="btn-group">
             <button
               className={`tw:btn btn-sm ${
@@ -104,8 +105,11 @@ export function AssumptionCard({
             </button>
           </div>
 
-          <div className="w-full mt-3 flex items-center text-sm text-base-content/70">
-            <span className="flex-1" aria-hidden="true"></span>
+          <div className="flex-1 text-right text-sm text-base-content/70">
+            {voteSummary.total} {voteSummary.total === 1 ? 'vote' : 'votes'}
+          </div>
+
+          <div className="w-full flex justify-center mt-2">
             {votes.length > 0 && (
               <button
                 type="button"
@@ -118,10 +122,8 @@ export function AssumptionCard({
                 </span>
               </button>
             )}
-            <span className="flex-1 text-right">
-              {voteSummary.total} {voteSummary.total === 1 ? 'vote' : 'votes'}
-            </span>
           </div>
+
           {votes.length > 0 && showLog && (
             <div className="mt-3 border-t border-base-200 pt-3 w-full">
               <div className="text-sm font-semibold mb-2 text-base-content/70">Voting Log</div>

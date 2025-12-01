@@ -88,12 +88,22 @@ export function NarriApp() {
   };
 
   const handleNewBoard = () => {
-    localStorage.removeItem('narriDocId');
-    localStorage.removeItem('narriIdentity');
-    const url = new URL(window.location.href);
-    url.hash = '';
-    window.history.replaceState(null, '', url.toString());
-    window.location.reload();
+    const storedIdentity = localStorage.getItem('narriIdentity');
+    const identity: UserIdentity = storedIdentity
+      ? JSON.parse(storedIdentity)
+      : {
+          did: currentUserDid || `did:key:${generateId()}`,
+          displayName: `User-${Math.random().toString(36).substring(7)}`,
+        };
+
+    const handle = repo.create(createEmptyDoc(identity));
+    const docId = handle.documentId;
+    localStorage.setItem('narriDocId', docId);
+
+    // Push new hash so back button returns to previous board
+    const newUrl = `${window.location.pathname}#doc=${docId}`;
+    window.history.pushState(null, '', newUrl);
+    setDocumentId(docId);
   };
 
   // Show loading while initializing

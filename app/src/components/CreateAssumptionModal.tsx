@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { Tag } from 'narri-ui';
 
 interface CreateAssumptionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (sentence: string, tags: string[]) => void;
+  availableTags: Tag[];
 }
 
 /**
@@ -13,6 +15,7 @@ export function CreateAssumptionModal({
   isOpen,
   onClose,
   onCreate,
+  availableTags,
 }: CreateAssumptionModalProps) {
   const [sentence, setSentence] = useState('');
   const [tagsInput, setTagsInput] = useState('');
@@ -39,6 +42,35 @@ export function CreateAssumptionModal({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const selectedTags = useMemo(
+    () =>
+      tagsInput
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    [tagsInput]
+  );
+
+  const activeFragment = useMemo(() => {
+    const parts = tagsInput.split(',');
+    return parts[parts.length - 1]?.trim().toLowerCase() || '';
+  }, [tagsInput]);
+
+  const suggestions = useMemo(() => {
+    const chosen = new Set(selectedTags.map((t) => t.toLowerCase()));
+    const all = availableTags.filter((tag) => !chosen.has(tag.name.toLowerCase()));
+    return all
+      .filter((tag) => tag.name.toLowerCase().includes(activeFragment))
+      .slice(0, 6);
+  }, [availableTags, selectedTags, activeFragment]);
+
+  const addTag = (tagName: string) => {
+    const next = Array.from(
+      new Set([...selectedTags, tagName].map((t) => t.trim()).filter(Boolean))
+    );
+    setTagsInput(next.join(', ') + ', ');
   };
 
   if (!isOpen) return null;
@@ -80,6 +112,20 @@ export function CreateAssumptionModal({
                 Separate tags with commas; new tags are created automatically.
               </span>
             </label>
+            {suggestions.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {suggestions.map((tag) => (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    className="badge badge-outline hover:badge-primary transition-colors"
+                    onClick={() => addTag(tag.name)}
+                  >
+                    {tag.name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="modal-action">

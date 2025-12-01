@@ -82,10 +82,14 @@ export function NarriApp() {
     }
   };
 
-  const handleReset = () => {
+  const handleResetId = () => {
+    localStorage.removeItem('narriIdentity');
+    window.location.reload();
+  };
+
+  const handleNewBoard = () => {
     localStorage.removeItem('narriDocId');
     localStorage.removeItem('narriIdentity');
-    // Remove shared doc id from URL so a fresh document is created
     const url = new URL(window.location.href);
     url.hash = '';
     window.history.replaceState(null, '', url.toString());
@@ -97,5 +101,12 @@ export function NarriApp() {
     return <LoadingScreen />;
   }
 
-  return <MainView documentId={documentId} currentUserDid={currentUserDid} onReset={handleReset} />;
+  return (
+    <MainView
+      documentId={documentId}
+      currentUserDid={currentUserDid}
+      onResetId={handleResetId}
+      onNewBoard={handleNewBoard}
+    />
+  );
 }

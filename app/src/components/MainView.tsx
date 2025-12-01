@@ -9,7 +9,8 @@ import Avatar from 'boring-avatars';
 interface MainViewProps {
   documentId: DocumentId;
   currentUserDid: string;
-  onReset: () => void;
+  onResetId: () => void;
+  onNewBoard: () => void;
 }
 
 // Simple hash function to create more distinct avatar seeds
@@ -27,7 +28,7 @@ function hashString(str: string): string {
  * Main application view with AppShell layout
  * Shows list of assumptions and allows creating new ones
  */
-export function MainView({ documentId, currentUserDid, onReset }: MainViewProps) {
+export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: MainViewProps) {
   const repo = useRepo();
   const docHandle = repo.find<OpinionGraphDoc>(documentId);
   const narri = useOpinionGraph(documentId, docHandle, currentUserDid);
@@ -210,10 +211,29 @@ export function MainView({ documentId, currentUserDid, onReset }: MainViewProps)
                 </a>
               </li>
               <li className="menu-title">
-                <span>Danger Zone</span>
+                <span>Board & Identity</span>
               </li>
               <li>
-                <a onClick={onReset} className="text-error">
+                <a onClick={onResetId}>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 6v12m6-6H6"
+                    />
+                  </svg>
+                  Reset ID
+                </a>
+              </li>
+              <li>
+                <a onClick={onNewBoard} className="text-error">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-4 w-4"
@@ -228,7 +248,7 @@ export function MainView({ documentId, currentUserDid, onReset }: MainViewProps)
                       d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
                     />
                   </svg>
-                  Reset App
+                  New Board
                 </a>
               </li>
             </ul>

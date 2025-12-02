@@ -1,10 +1,12 @@
 import { DocumentId } from '@automerge/automerge-repo';
 import { useRepo } from '@automerge/automerge-repo-react-hooks';
-import { useOpinionGraph, type OpinionGraphDoc } from 'narri-ui';
+import { useOpinionGraph, type OpinionGraphDoc } from 'narrative-ui';
 import { AssumptionList } from './AssumptionList';
 import { CreateAssumptionModal } from './CreateAssumptionModal';
 import { useEffect, useMemo, useState } from 'react';
 import Avatar from 'boring-avatars';
+import { exposeDocToConsole } from '../debug';
+
 
 interface MainViewProps {
   documentId: DocumentId;
@@ -31,7 +33,7 @@ function hashString(str: string): string {
 export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: MainViewProps) {
   const repo = useRepo();
   const docHandle = repo.find<OpinionGraphDoc>(documentId);
-  const narri = useOpinionGraph(documentId, docHandle, currentUserDid);
+  const narrative = useOpinionGraph(documentId, docHandle, currentUserDid);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
   const [sortBy, setSortBy] = useState<'votes' | 'agree' | 'recent' | 'created'>('created');
@@ -41,15 +43,21 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   const [importText, setImportText] = useState('');
   const [importError, setImportError] = useState('');
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
-  const logoUrl = `${import.meta.env.BASE_URL}narri.png`;
+  const logoUrl = `${import.meta.env.BASE_URL}narrative.png`;
+
+  useEffect(() => {
+    if (narrative?.doc) {
+      exposeDocToConsole(narrative.doc);
+    }
+  }, [narrative?.doc]);
 
   const sortedAssumptions = useMemo(() => {
-    if (!narri) return [];
+    if (!narrative) return [];
 
     const getLastVoteTs = (assumptionId: string) => {
-      const votes = narri.doc.votes;
+      const votes = narrative.doc.votes;
       return (
-        narri.doc.assumptions[assumptionId]?.voteIds
+        narrative.doc.assumptions[assumptionId]?.voteIds
           .map((id) => votes[id])
           .filter((v): v is NonNullable<typeof votes[string]> => Boolean(v))
           .reduce((latest, vote) => Math.max(latest, vote.updatedAt ?? vote.createdAt), 0) || 0
@@ -57,12 +65,12 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
     };
 
     const filtered = activeTagFilter
-      ? narri.assumptions.filter((a) => a.tagIds.includes(activeTagFilter))
-      : narri.assumptions;
+      ? narrative.assumptions.filter((a) => a.tagIds.includes(activeTagFilter))
+      : narrative.assumptions;
 
     return [...filtered].sort((a, b) => {
-      const summaryA = narri.getVoteSummary(a.id);
-      const summaryB = narri.getVoteSummary(b.id);
+      const summaryA = narrative.getVoteSummary(a.id);
+      const summaryB = narrative.getVoteSummary(b.id);
 
       const totalA = summaryA.total;
       const totalB = summaryB.total;
@@ -83,7 +91,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
       // recent
       return lastVoteB - lastVoteA || totalB - totalA || agreeRateB - agreeRateA || b.createdAt - a.createdAt;
     });
-  }, [narri, sortBy, narri?.doc?.lastModified, activeTagFilter]);
+  }, [narrative, sortBy, narrative?.doc?.lastModified, activeTagFilter]);
 
   const handleShareClick = () => {
     const url = window.location.href;
@@ -94,7 +102,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem('narriIdentity');
+    const stored = localStorage.getItem('narrativeIdentity');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -108,7 +116,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   }, []);
 
   const handleExportIdentity = () => {
-    const savedIdentity = localStorage.getItem('narriIdentity');
+    const savedIdentity = localStorage.getItem('narrativeIdentity');
     if (!savedIdentity) return;
 
     const blob = new Blob([savedIdentity], { type: 'application/json' });
@@ -135,7 +143,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
         try {
           const identity = JSON.parse(event.target?.result as string);
           if (identity.did && identity.displayName) {
-            localStorage.setItem('narriIdentity', JSON.stringify(identity));
+            localStorage.setItem('narrativeIdentity', JSON.stringify(identity));
             window.location.reload();
           } else {
             alert('Invalid identity file');
@@ -152,18 +160,18 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   const handleSaveName = () => {
     const next = nameInput.trim();
     if (!next) return;
-    narri.updateIdentity({ displayName: next });
-    const storedIdentity = localStorage.getItem('narriIdentity');
+    narrative.updateIdentity({ displayName: next });
+    const storedIdentity = localStorage.getItem('narrativeIdentity');
     if (storedIdentity) {
       const parsed = JSON.parse(storedIdentity);
       parsed.displayName = next;
-      localStorage.setItem('narriIdentity', JSON.stringify(parsed));
+      localStorage.setItem('narrativeIdentity', JSON.stringify(parsed));
     }
     setShowIdentityModal(false);
   };
 
   const handleImportAssumptions = () => {
-    if (!narri) return;
+    if (!narrative) return;
     setImportError('');
     try {
       const parsed = JSON.parse(importText || '[]');
@@ -177,7 +185,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
             : [];
 
         if (sentence && typeof sentence === 'string') {
-          narri.createAssumption(sentence, tags);
+          narrative.createAssumption(sentence, tags);
         }
       });
 
@@ -190,7 +198,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
   };
 
   // Wait for document to load
-  if (!narri) {
+  if (!narrative) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-base-200">
         <div className="text-center">
@@ -207,7 +215,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
       <div className="navbar bg-base-100 shadow-lg sticky top-0 z-20">
         <div className="flex-1">
           <a className="btn btn-ghost text-xl flex items-center gap-2">
-            <img src={logoUrl} alt="Narri" className="h-12 pb-2" />
+            <img src={logoUrl} alt="Narrative" className="h-12 pb-2" />
             <span>Narrative</span>
           </a>
         </div>
@@ -277,7 +285,7 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
             <div className="flex flex-wrap gap-2">
               {activeTagFilter ? (
                 <div className="badge badge-primary gap-1">
-                  <span>{narri.tags.find((t) => t.id === activeTagFilter)?.name ?? 'Tag'}</span>
+                  <span>{narrative.tags.find((t) => t.id === activeTagFilter)?.name ?? 'Tag'}</span>
                   <button
                     className="btn btn-ghost btn-xs"
                     onClick={() => setActiveTagFilter(null)}
@@ -312,14 +320,14 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
 
         <AssumptionList
           assumptions={sortedAssumptions}
-          getVoteSummary={narri.getVoteSummary}
-          getVotesForAssumption={narri.getVotesForAssumption}
-          getEditsForAssumption={narri.getEditsForAssumption}
-          onVote={narri.setVote}
-          onEdit={narri.updateAssumption}
-          tags={narri.tags}
+          getVoteSummary={narrative.getVoteSummary}
+          getVotesForAssumption={narrative.getVotesForAssumption}
+          getEditsForAssumption={narrative.getEditsForAssumption}
+          onVote={narrative.setVote}
+          onEdit={narrative.updateAssumption}
+          tags={narrative.tags}
           onTagClick={(tagId) => setActiveTagFilter((prev) => (prev === tagId ? null : tagId))}
-          currentUserId={narri.currentUserDid}
+          currentUserId={narrative.currentUserDid}
         />
       </div>
 
@@ -464,8 +472,8 @@ export function MainView({ documentId, currentUserDid, onResetId, onNewBoard }: 
       <CreateAssumptionModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onSubmit={narri.createAssumption}
-        availableTags={narri.tags}
+        onSubmit={narrative.createAssumption}
+        availableTags={narrative.tags}
       />
 
       {/* Toast for copied URL */}

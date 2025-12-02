@@ -1,4 +1,4 @@
-import { Assumption, Tag, Vote, VoteValue, EditEntry } from 'narri-ui';
+import { Assumption, Tag, Vote, VoteValue, EditEntry } from 'narrative-ui';
 import { AssumptionCard } from './AssumptionCard';
 
 interface AssumptionListProps {

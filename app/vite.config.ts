@@ -6,7 +6,7 @@ import topLevelAwait from 'vite-plugin-top-level-await'
 const isGithubActions = process.env.GITHUB_ACTIONS === 'true'
 
 export default defineConfig({
-  base: isGithubActions ? '/narri/' : '/',
+  base: isGithubActions ? '/narrative/' : '/',
   plugins: [
     react(),
     wasm(),

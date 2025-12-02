@@ -1,5 +1,5 @@
 /**
- * Narri data schema for Automerge.
+ * Narrative data schema for Automerge.
  *
  * Defines the TypeScript types for the CRDT document structure.
  * Automerge automatically handles conflict resolution and syncing.
@@ -154,7 +154,7 @@ export function computeVoteSummary(
 }
 
 /**
- * Create an empty Narri document
+ * Create an empty Narrative document
  */
 export function createEmptyDoc(identity: UserIdentity): OpinionGraphDoc {
   const identities: Record<string, IdentityProfile> = {};

@@ -1,5 +1,5 @@
 {
-  "name": "narri-app",
+  "name": "narrative-app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,11 +12,12 @@
   "dependencies": {
     "@automerge/automerge": "^2.2.8",
     "@automerge/automerge-repo": "^1.2.1",
+    "@automerge/automerge-repo-network-broadcastchannel": "^2.5.0",
     "@automerge/automerge-repo-network-websocket": "^1.2.1",
     "@automerge/automerge-repo-react-hooks": "^1.2.1",
     "@automerge/automerge-repo-storage-indexeddb": "^1.2.1",
     "boring-avatars": "^2.0.4",
-    "narri-ui": "*",
+    "narrative-ui": "*",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },

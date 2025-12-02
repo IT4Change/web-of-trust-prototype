@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Assumption, Tag, Vote, VoteValue, VoteSummary, EditEntry } from 'narri-ui';
+import { Assumption, Tag, Vote, VoteValue, VoteSummary, EditEntry } from 'narrative-ui';
 import { VoteBar } from './VoteBar';
 import { CreateAssumptionModal } from './CreateAssumptionModal';
 
@@ -226,29 +226,33 @@ export function AssumptionCard({
                     const vote = item.vote;
                     const hasName = Boolean(vote.voterName);
                     return (
-                      <div key={`vote-${vote.id}`} className="flex items-center gap-2 text-sm">
-                        <span
-                          className={
-                            vote.value === 'green'
-                              ? 'text-success font-semibold'
-                              : vote.value === 'yellow'
-                                ? 'text-warning font-semibold'
-                                : 'text-error font-semibold'
-                          }
-                        >
-                          {vote.value === 'green' ? '🟢' : vote.value === 'yellow' ? '🟡' : '🔴'}
-                        </span>
-                        <div className="flex flex-col leading-tight">
-                          <span className="font-semibold">
-                            {hasName ? vote.voterName : vote.voterDid}
+                      <div key={`vote-${vote.id}`} className="flex flex-col gap-1 text-sm border border-base-200 rounded-lg p-2">
+                        <div className="flex items-center gap-2 justify-between">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={
+                                vote.value === 'green'
+                                  ? 'text-success font-semibold'
+                                  : vote.value === 'yellow'
+                                    ? 'text-warning font-semibold'
+                                    : 'text-error font-semibold'
+                              }
+                            >
+                              {vote.value === 'green' ? '🟢' : vote.value === 'yellow' ? '🟡' : '🔴'}
+                            </span>
+                            <div className="flex flex-col leading-tight">
+                              <span className="font-semibold">
+                                {hasName ? vote.voterName : vote.voterDid}
+                              </span>
+                              <span className="text-xs text-base-content/60 break-all">
+                                {vote.voterDid}
+                              </span>
+                            </div>
+                          </div>
+                          <span className="text-xs text-base-content/60" title={exactTime}>
+                            {relativeTime}
                           </span>
-                          {hasName && (
-                            <span className="text-xs text-base-content/60 break-all">{vote.voterDid}</span>
-                          )}
                         </div>
-                        <span className="text-xs text-base-content/60" title={exactTime}>
-                          {relativeTime}
-                        </span>
                       </div>
                     );
                   }

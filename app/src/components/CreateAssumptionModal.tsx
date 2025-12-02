@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Tag } from 'narri-ui';
+import { Tag } from 'narrative-ui';
 
 interface CreateAssumptionModalProps {
   isOpen: boolean;

@@ -1,4 +1,4 @@
-import { Vote, VoteSummary } from 'narri-ui';
+import { Vote, VoteSummary } from 'narrative-ui';
 
 interface VoteBarProps {
   summary: VoteSummary;

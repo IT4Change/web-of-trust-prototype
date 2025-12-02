@@ -10,7 +10,7 @@ import {
 } from '../schema';
 
 /**
- * Main hook for accessing and mutating Narri data
+ * Main hook for accessing and mutating Narrative data
  * Uses Automerge CRDT for automatic conflict resolution
  */
 export function useOpinionGraph(
@@ -84,8 +84,7 @@ export function useOpinionGraph(
         createdAt: Date.now(),
       };
       assumption.editLogIds.push(editId);
-      // Sorting stability: newest first by log order
-      assumption.editLogIds.sort((a, b) => b.localeCompare(a));
+      // Note: Sorting is done on read (getEditsForAssumption) to avoid CRDT conflicts
 
       d.assumptions[id] = assumption;
       d.lastModified = Date.now();
@@ -120,7 +119,15 @@ export function useOpinionGraph(
         .filter((t): t is NonNullable<typeof d.tags[string]> => Boolean(t))
         .map((t) => t.name);
 
-      assumption.tagIds = newTagIds;
+      // Update tagIds with minimal changes (avoid array replacement for better CRDT merging)
+      const toRemove = assumption.tagIds.filter(id => !newTagIds.includes(id));
+      const toAdd = newTagIds.filter(id => !assumption.tagIds.includes(id));
+
+      toRemove.forEach(id => {
+        const idx = assumption.tagIds.indexOf(id);
+        if (idx !== -1) assumption.tagIds.splice(idx, 1);
+      });
+      toAdd.forEach(id => assumption.tagIds.push(id));
 
       const editId = generateId();
       const entry: any = {
@@ -348,6 +355,11 @@ export function useOpinionGraph(
           profile.displayName = updates.displayName;
         }
         // Propagate to current user's votes so name shows in logs/tooltips
+        // NOTE: This is denormalization for display performance (avoids lookup on every vote render)
+        // PERFORMANCE: O(n) where n = total votes. Could be slow with 1000s of votes.
+        // TODO: Future optimization options:
+        //   1. Create index: doc.votesByUser[did] = voteIds[] for O(1) lookup
+        //   2. Remove denormalization: compute names on-read from doc.identities[did]
         Object.values(d.votes).forEach((vote) => {
           if (vote.voterDid === currentUserDid) {
             if (updates.displayName === '') {

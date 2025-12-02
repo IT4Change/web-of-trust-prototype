@@ -1,6 +1,6 @@
-# Narri
+# Narrative
 
-Narri is a local-first app for capturing assumptions as single sentences, tagging them freely, and letting collaborators vote (🟢 agree / 🟡 neutral / 🔴 disagree). It runs entirely in the browser using CRDT sync.
+Narrative is a local-first app for capturing assumptions as single sentences, tagging them freely, and letting collaborators vote (🟢 agree / 🟡 neutral / 🔴 disagree). It runs entirely in the browser using CRDT sync.
 
 ## Overview
 - Local-first, offline-friendly via Automerge CRDTs
@@ -16,9 +16,9 @@ Narri is a local-first app for capturing assumptions as single sentences, taggin
 
 ## Monorepo
 ```
-narri/
-├── app/   # Narri React app
-└── lib/   # narri-ui library (schema + hooks)
+narrative/
+├── app/   # Narrative React app
+└── lib/   # narrative-ui library (schema + hooks)
 ```
 
 ## Getting Started
@@ -45,7 +45,7 @@ App opens at http://localhost:3000.
 - **Vote**: one per user per assumption (`green | yellow | red`)
 
 ## Identity
-Each browser generates a keypair-derived DID on first run. Identity and the last document ID are stored in `localStorage` (`narriIdentity`, `narriDocId`). Reset clears them and starts a fresh document.
+Each browser generates a keypair-derived DID on first run. Identity and the last document ID are stored in `localStorage` (`narrativeIdentity`, `narrativeDocId`). Reset clears them and starts a fresh document.
 
 ## License
 MIT

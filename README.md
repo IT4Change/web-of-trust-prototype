@@ -897,19 +897,6 @@ const createAssumption = async (sentence: string, tagNames: string[]) => {
 
 ## Performance Optimizations
 
-### Dynamic Name Lookup (Recent Optimization)
-
-**Previous Approach**: Denormalized display names stored in every entity
-- ❌ O(n) updates when user changes name (1000s of CRDT mutations)
-- ❌ Large document size (redundant names)
-- ❌ Propagation delay (names update slowly)
-
-**Current Approach**: Dynamic lookup from `doc.identities[did].displayName`
-- ✅ O(1) updates (single CRDT mutation)
-- ✅ Smaller documents (~10-20% reduction)
-- ✅ Instant updates (no propagation needed)
-- ✅ Render performance unchanged (hash map lookups are O(1))
-
 ### CRDT Best Practices
 
 1. **Minimal Changes**: Only mutate changed fields, avoid full object replacement

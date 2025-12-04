@@ -5,15 +5,17 @@
 1. [Overview](#overview)
 2. [Tech Stack](#tech-stack)
 3. [Architecture Overview](#architecture-overview)
-4. [Data Model (CRDT)](#data-model-crdt)
-5. [Identity System (DIDs)](#identity-system-dids)
-6. [Key Management](#key-management)
-7. [Cryptographic Signatures (JWS)](#cryptographic-signatures-jws)
-8. [Sync & Collaboration](#sync--collaboration)
-9. [Component Architecture](#component-architecture)
-10. [Data Flow](#data-flow)
-11. [Security Considerations](#security-considerations)
-12. [Performance Optimizations](#performance-optimizations)
+4. [Modular Architecture](#modular-architecture)
+5. [Data Model (CRDT)](#data-model-crdt)
+6. [Web of Trust](#web-of-trust)
+7. [Identity System (DIDs)](#identity-system-dids)
+8. [Key Management](#key-management)
+9. [Cryptographic Signatures (JWS)](#cryptographic-signatures-jws)
+10. [Sync & Collaboration](#sync--collaboration)
+11. [Component Architecture](#component-architecture)
+12. [Data Flow](#data-flow)
+13. [Security Considerations](#security-considerations)
+14. [Performance Optimizations](#performance-optimizations)
 
 ---
 
@@ -122,6 +124,146 @@ narrative/
 │   Local persistence, remote synchronization    │
 └─────────────────────────────────────────────────┘
 ```
+
+---
+
+## Modular Architecture
+
+Narrative is evolving into a **modular ecosystem** where different apps (Narrative, Map, Market, etc.) function as modules within shared workspaces/contexts.
+
+### Core Concepts
+
+```
+Workspace/Context = A group/community with:
+  - Shared identities (who is participating?)
+  - Shared Web of Trust (who trusts whom?)
+  - Activatable modules (Narrative, Map, Market, Chat, Kanban, ...)
+```
+
+### BaseDocument Structure
+
+All Narrative apps share a common document structure defined in `lib/src/schema/document.ts`:
+
+```typescript
+interface ContextMetadata {
+  name: string;           // Workspace display name
+  description?: string;   // Optional description
+  avatar?: string;        // Optional avatar/icon URL
+}
+
+interface BaseDocument<TData = unknown> {
+  // Metadata
+  version: string;
+  lastModified: number;
+
+  // Context information (for workspaces/multi-module support)
+  context?: ContextMetadata;
+
+  // Enabled modules (for multi-module documents)
+  enabledModules?: Record<string, boolean>;
+
+  // Shared infrastructure (across all modules)
+  identities: Record<string, IdentityProfile>;
+  trustAttestations: Record<string, TrustAttestation>;
+
+  // Module-specific data
+  data: TData;
+}
+```
+
+### Module System
+
+Modules are self-contained functional units that can be activated within a workspace.
+
+#### Module Interface
+
+```typescript
+// lib/src/modules/types.ts
+
+interface ModuleContext {
+  currentUserDid: string;
+  identities: Record<string, IdentityProfile>;
+  trustAttestations: Record<string, TrustAttestation>;
+}
+
+interface ModuleProps<TData = unknown> {
+  data: TData;
+  onChange: (data: TData) => void;
+  context: ModuleContext;
+}
+
+interface ModuleDefinition<TData = unknown> {
+  id: string;                    // Unique module ID (e.g., 'narrative')
+  name: string;                  // Human-readable name
+  icon: string;                  // Icon/emoji for UI
+  description?: string;
+  version: string;
+  createEmptyData: () => TData;  // Factory for initial data
+  component: ComponentType<ModuleProps<TData>>;
+}
+```
+
+#### Available Modules
+
+| Module | ID | Description | Status |
+|--------|-----|------------|--------|
+| **Narrative** | `narrative` | Assumption tracking & voting | ✅ Active |
+| **Map** | `map` | Collaborative mapping | 🚧 Planned |
+| **Market** | `market` | Marketplace functionality | 🚧 Planned |
+
+### Multi-Module Document Example
+
+```typescript
+// A workspace with multiple modules enabled
+type UnifiedModules = {
+  narrative?: OpinionGraphData;
+  map?: MapData;
+  market?: MarketData;
+};
+
+const workspaceDoc: BaseDocument<UnifiedModules> = {
+  version: '1.0.0',
+  lastModified: Date.now(),
+
+  context: {
+    name: 'Climate Action Berlin',
+    description: 'Local climate group workspace',
+  },
+
+  enabledModules: {
+    narrative: true,
+    map: true,
+    market: false,
+  },
+
+  identities: { /* shared across all modules */ },
+  trustAttestations: { /* shared across all modules */ },
+
+  data: {
+    narrative: { assumptions: {}, votes: {}, tags: {} },
+    map: { locations: {}, markers: {} },
+  },
+};
+```
+
+### Architecture Evolution
+
+**Current State**: Standalone apps with shared library
+```
+narrative-app/  → uses lib/
+map-app/        → uses lib/
+market-app/     → uses lib/
+```
+
+**Target State**: Unified app with pluggable modules
+```
+unified-app/
+  ├── imports NarrativeModule from narrative-app/
+  ├── imports MapModule from map-app/
+  └── imports MarketModule from market-app/
+```
+
+For detailed migration plan, see [MODULAR-ARCHITECTURE-PLAN.md](MODULAR-ARCHITECTURE-PLAN.md).
 
 ---
 
@@ -267,6 +409,153 @@ oldTagIds.forEach(id => {
 - Easier conflict resolution
 
 **Display Name Resolution**: Names are looked up dynamically from `doc.identities[did].displayName` at render time (not stored in entities). This allows instant name updates without expensive propagation.
+
+---
+
+## Web of Trust
+
+Narrative implements a decentralized **Web of Trust** system for identity verification between users.
+
+### Concept
+
+Instead of relying on central authorities, users verify each other's identities through direct interactions (e.g., in-person meetings, QR code scanning). This creates a network of trust relationships.
+
+### Trust Attestation Structure
+
+```typescript
+// lib/src/schema/identity.ts
+
+interface TrustAttestation {
+  id: string;
+  trusterDid: string;           // DID of user making the attestation
+  trusteeDid: string;           // DID of user being trusted
+  level: 'verified' | 'endorsed';
+  verificationMethod?: 'in-person' | 'video-call' | 'email' | 'social-proof';
+  notes?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+```
+
+### Trust Relationship Types
+
+| Type | Icon | Badge Color | Description |
+|------|------|-------------|-------------|
+| **Bidirectional** | ✓ | Green | Both users trust each other (mutual verification) |
+| **Outgoing** | → | Blue | You trust them, they haven't verified you |
+| **Incoming** | ← | Yellow | They trust you, you haven't verified them |
+| **None** | - | Gray | No trust relationship |
+
+### Trust Flow
+
+```
+┌────────────────────────────────────────────────────┐
+│  User A opens QR Scanner (Profile Menu → Verify)   │
+└────────────────────────────────────────────────────┘
+                      ↓
+┌────────────────────────────────────────────────────┐
+│  User A scans User B's QR code                     │
+│  QR contains: narrative://verify/{did}             │
+└────────────────────────────────────────────────────┘
+                      ↓
+┌────────────────────────────────────────────────────┐
+│  Confirmation dialog shows User B's identity       │
+│  User A clicks "Verify & Trust"                    │
+└────────────────────────────────────────────────────┘
+                      ↓
+┌────────────────────────────────────────────────────┐
+│  Trust attestation created: A → B                  │
+│  addTrustAttestation(doc, A.did, B.did, 'verified')│
+└────────────────────────────────────────────────────┘
+                      ↓
+┌────────────────────────────────────────────────────┐
+│  If B had already verified A (B → A exists):       │
+│  → Automatically mark as seen (no double-prompt)   │
+│  → Both now have bidirectional trust               │
+└────────────────────────────────────────────────────┘
+```
+
+### Trust API
+
+```typescript
+// lib/src/schema/document.ts
+
+// Add trust attestation
+addTrustAttestation(
+  doc: BaseDocument,
+  trusterDid: string,
+  trusteeDid: string,
+  level: 'verified' | 'endorsed',
+  verificationMethod?: string,
+  notes?: string
+): string;
+
+// Remove trust attestation
+removeTrustAttestation(
+  doc: BaseDocument,
+  trusterDid: string,
+  trusteeDid: string
+): boolean;
+
+// Get specific attestation
+getTrustAttestation(
+  doc: BaseDocument,
+  trusterDid: string,
+  trusteeDid: string
+): TrustAttestation | undefined;
+
+// Get all attestations by a user
+getTrustAttestations(
+  doc: BaseDocument,
+  trusterDid: string
+): TrustAttestation[];
+```
+
+### Web of Trust Filter
+
+Users can filter content to show only contributions from trusted users:
+
+```typescript
+// MainView.tsx - Web of Trust Filter
+const withTrustFilter = webOfTrustFilter
+  ? assumptions.filter((a) => {
+      // Always include own assumptions
+      if (a.createdBy === currentUserDid) return true;
+
+      // Include if creator is trusted
+      const trustAttestation = Object.values(doc.trustAttestations)
+        .find(att =>
+          att.trusterDid === currentUserDid &&
+          att.trusteeDid === a.createdBy
+        );
+      return trustAttestation !== undefined;
+    })
+  : assumptions;
+```
+
+### UI Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| **QRScannerModal** | `lib/src/components/` | Scan QR codes to verify users |
+| **CollaboratorsModal** | `lib/src/components/` | View all users with trust badges |
+| **TrustReciprocityModal** | `lib/src/components/` | Prompt to trust back users who trusted you |
+| **ProfileModal** | `lib/src/components/` | Shows user's QR code for others to scan |
+
+### Trust Notifications
+
+The `useTrustNotifications` hook tracks pending trust attestations:
+
+```typescript
+const { pendingAttestations, markAsSeen } = useTrustNotifications(
+  doc,
+  currentUserDid,
+  documentId
+);
+
+// Shows modal when someone new trusts you
+// Offers to "Trust Back" or "Decline"
+```
 
 ---
 
@@ -983,6 +1272,6 @@ doc.votesByAssumption[assumptionId] = voteIds[];
 
 ---
 
-**Last Updated**: 2025-12-03
+**Last Updated**: 2025-12-04
 **Version**: 0.1.0
 **Authors**: Narrative Team

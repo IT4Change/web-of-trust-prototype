@@ -8,15 +8,35 @@
 import type { IdentityProfile, TrustAttestation, UserIdentity } from './identity';
 
 /**
+ * Context/Workspace metadata
+ * Provides human-readable information about this collaboration space
+ */
+export interface ContextMetadata {
+  /** Display name of this workspace/context */
+  name: string;
+  /** Optional description */
+  description?: string;
+  /** Optional avatar/icon URL */
+  avatar?: string;
+}
+
+/**
  * Base document structure shared by all Narrative apps
  * Wraps app-specific data with shared identity & trust infrastructure
  *
- * @template TData - App-specific data type (e.g., OpinionGraphData, MapData)
+ * @template TData - App-specific data type (e.g., OpinionGraphData, MapData, or multi-module data)
  */
 export interface BaseDocument<TData = unknown> {
   // Metadata
   version: string;
   lastModified: number;
+
+  // Context information (for workspaces/multi-module support)
+  context?: ContextMetadata;
+
+  // Enabled modules (for multi-module documents)
+  // Maps module ID to enabled state
+  enabledModules?: Record<string, boolean>;
 
   // Identity (shared across all apps)
   identities: Record<string, IdentityProfile>;  // DID → profile
@@ -24,7 +44,7 @@ export interface BaseDocument<TData = unknown> {
   // Web of Trust (shared across all apps)
   trustAttestations: Record<string, TrustAttestation>;
 
-  // App-specific data
+  // App-specific data (can be single module or multi-module)
   data: TData;
 }
 
@@ -63,10 +83,22 @@ export function createBaseDocument<TData>(
 }
 
 /**
+ * Generate a simple unique ID
+ * Can be used for any entity (assumptions, votes, tags, etc.)
+ *
+ * @param prefix - Optional prefix for the ID
+ * @returns Unique ID string
+ */
+export function generateId(prefix?: string): string {
+  const base = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  return prefix ? `${prefix}-${base}` : base;
+}
+
+/**
  * Generate unique ID for trust attestation
  */
 function generateAttestationId(): string {
-  return `trust-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  return generateId('trust');
 }
 
 /**

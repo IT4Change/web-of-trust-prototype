@@ -14,9 +14,10 @@ export type {
 } from './identity';
 
 // Generic document structure (shared across all apps)
-export type { BaseDocument } from './document';
+export type { BaseDocument, ContextMetadata } from './document';
 export {
   createBaseDocument,
+  generateId,
   addTrustAttestation,
   removeTrustAttestation,
   getTrustAttestations,

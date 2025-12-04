@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { DocumentId } from '@automerge/automerge-repo';
 import { useRepo } from '@automerge/automerge-repo-react-hooks';
 import {
@@ -12,8 +12,7 @@ import {
 } from 'narrative-ui';
 import { useMapDocument } from '../hooks/useMapDocument';
 import type { MapDoc } from '../schema/map-data';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { MapContent } from './MapContent';
 
 interface MapViewProps {
   documentId: DocumentId;
@@ -26,7 +25,8 @@ interface MapViewProps {
 }
 
 /**
- * Main map view component
+ * Main map view component (standalone app shell)
+ * Uses MapContent for the actual map rendering
  */
 export function MapView({
   documentId,
@@ -48,14 +48,9 @@ export function MapView({
     displayName
   );
 
-  const mapRef = useRef<L.Map | null>(null);
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const markersRef = useRef<Map<string, L.Marker>>(new Map());
-
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const [showCollaboratorsModal, setShowCollaboratorsModal] = useState(false);
   const [showCopiedToast, setShowCopiedToast] = useState(false);
-  const [isPlacingMarker, setIsPlacingMarker] = useState(false);
   const [hiddenUserDids, setHiddenUserDids] = useState<Set<string>>(new Set());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -67,108 +62,6 @@ export function MapView({
     currentUserDid,
     documentId.toString()
   );
-
-  // Initialize map
-  useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
-
-    const map = L.map(mapContainerRef.current).setView([51.505, -0.09], 3);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
-    }).addTo(map);
-
-    mapRef.current = map;
-
-    // Force Leaflet to recalculate map size
-    setTimeout(() => {
-      map.invalidateSize();
-    }, 100);
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      // Clear all markers when map is destroyed
-      markersRef.current.clear();
-    };
-  }, []);
-
-  // Update markers when locations change
-  useEffect(() => {
-    if (!mapRef.current || !mapData) return;
-
-    const map = mapRef.current;
-    const currentMarkers = markersRef.current;
-
-    // Remove markers for hidden users or deleted locations
-    currentMarkers.forEach((marker, locationId) => {
-      const location = mapData.locations.find((loc) => loc.id === locationId);
-      if (!location || hiddenUserDids.has(location.userDid)) {
-        marker.remove();
-        currentMarkers.delete(locationId);
-      }
-    });
-
-    // Add or update markers
-    mapData.locations.forEach((location) => {
-      if (!location || hiddenUserDids.has(location.userDid)) return;
-
-      const existingMarker = currentMarkers.get(location.id);
-      const userName =
-        mapData.doc.identities[location.userDid]?.displayName ||
-        'Anonymous';
-      const isCurrentUser = location.userDid === currentUserDid;
-
-      if (existingMarker) {
-        // Update existing marker position
-        existingMarker.setLatLng([location.lat, location.lng]);
-        existingMarker.setPopupContent(
-          `<b>${userName}</b>${isCurrentUser ? ' (You)' : ''}${location.label ? '<br>' + location.label : ''}`
-        );
-      } else {
-        // Create new marker
-        const marker = L.marker([location.lat, location.lng], {
-          icon: L.divIcon({
-            className: 'custom-marker',
-            html: `<div style="background: ${isCurrentUser ? '#3b82f6' : '#ef4444'}; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-            iconSize: [24, 24],
-            iconAnchor: [12, 12],
-          }),
-        })
-          .addTo(map)
-          .bindPopup(
-            `<b>${userName}</b>${isCurrentUser ? ' (You)' : ''}${location.label ? '<br>' + location.label : ''}`
-          );
-
-        currentMarkers.set(location.id, marker);
-      }
-    });
-  }, [mapData?.locations, mapData?.doc, hiddenUserDids, currentUserDid]);
-
-  // Handle placing marker mode
-  useEffect(() => {
-    if (!mapRef.current || !isPlacingMarker) return;
-
-    const map = mapRef.current;
-
-    const handleMapClick = (e: L.LeafletMouseEvent) => {
-      const { lat, lng } = e.latlng;
-      const label = prompt('Optional label for your location:');
-      mapData?.setMyLocation(lat, lng, label || undefined);
-      setIsPlacingMarker(false);
-    };
-
-    map.on('click', handleMapClick);
-
-    // Change cursor
-    map.getContainer().style.cursor = 'crosshair';
-
-    return () => {
-      map.off('click', handleMapClick);
-      map.getContainer().style.cursor = '';
-    };
-  }, [isPlacingMarker, mapData]);
 
   if (!mapData) {
     return (
@@ -231,13 +124,6 @@ export function MapView({
     input.click();
   };
 
-  const handleZoomToMyLocation = () => {
-    const myLocation = mapData.getMyLocation();
-    if (myLocation && mapRef.current) {
-      mapRef.current.setView([myLocation.lat, myLocation.lng], 10);
-    }
-  };
-
   const toggleUserVisibility = (did: string) => {
     setHiddenUserDids((prev) => {
       const next = new Set(prev);
@@ -288,8 +174,6 @@ export function MapView({
   const showToast = (message: string) => {
     setToastMessage(message);
   };
-
-  const myLocation = mapData.getMyLocation();
 
   return (
     <div className="w-screen h-screen bg-base-200 flex flex-col overflow-hidden">
@@ -373,103 +257,17 @@ export function MapView({
         </div>
       </div>
 
-      {/* Map Content Area */}
+      {/* Map Content Area - using shared MapContent component */}
       <div className="flex-1 relative overflow-hidden">
-        {/* Map Container */}
-        <div
-          ref={mapContainerRef}
-          className="absolute inset-0"
-          style={{ width: '100%', height: '100%' }}
+        <MapContent
+          currentUserDid={currentUserDid}
+          locations={mapData.locations}
+          identities={mapData.doc.identities}
+          hiddenUserDids={hiddenUserDids}
+          onSetLocation={mapData.setMyLocation}
+          onRemoveLocation={mapData.removeMyLocation}
+          getMyLocation={mapData.getMyLocation}
         />
-
-        {/* Stats Panel - Floating */}
-        <div className="absolute top-4 right-4 z-[550] bg-base-100 text-base-content p-4 rounded-lg shadow-lg">
-          <div className="text-sm">
-            <div className="font-bold mb-2">Map Stats</div>
-            <div>📍 {mapData.locations.length} locations</div>
-            <div>👥 {Object.keys(mapData.doc.identities).length} users</div>
-          </div>
-        </div>
-
-        {/* Control Panel - Floating */}
-        <div className="absolute bottom-24 right-6 z-[550] flex flex-col gap-2">
-          <button
-            className={`btn ${isPlacingMarker ? 'btn-primary' : 'btn-neutral'} shadow-lg shadow-black/30`}
-            onClick={() => setIsPlacingMarker(!isPlacingMarker)}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-            {isPlacingMarker ? 'Click on map...' : myLocation ? 'Update Location' : 'Set Location'}
-          </button>
-
-          {myLocation && (
-            <>
-              <button
-                className="btn btn-neutral shadow-lg shadow-black/30"
-                onClick={handleZoomToMyLocation}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7"
-                  />
-                </svg>
-                Find Me
-              </button>
-
-              <button
-                className="btn btn-error shadow-lg shadow-black/30"
-                onClick={() => {
-                  if (confirm('Remove your location from the map?')) {
-                    mapData.removeMyLocation();
-                  }
-                }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-                Remove Location
-              </button>
-            </>
-          )}
-        </div>
       </div>
 
       {/* Board Menu FAB */}

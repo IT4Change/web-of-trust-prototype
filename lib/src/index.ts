@@ -17,11 +17,13 @@ export type {
   TrustLevel,
   // Generic document structure
   BaseDocument,
+  ContextMetadata,
 } from './schema';
 
 export {
   // Generic document utilities
   createBaseDocument,
+  generateId,
   // Trust attestation utilities
   addTrustAttestation,
   removeTrustAttestation,
@@ -82,3 +84,10 @@ export {
   processImageFile,
   isAvatarSizeValid,
 } from './utils/imageProcessing';
+
+// Module system exports
+export type {
+  ModuleContext,
+  ModuleProps,
+  ModuleDefinition,
+} from './modules/types';

@@ -5,17 +5,23 @@
   "type": "module",
   "workspaces": [
     "map-app",
+    "market-app",
     "narrative-app",
+    "unified-app",
     "lib"
   ],
   "scripts": {
     "create-app": "node scripts/create-app.mjs",
     "dev": "npm run dev --workspace=narrative-app",
     "dev:map": "npm run dev --workspace=map-app",
-    "build": "npm run build --workspace=lib && npm run build --workspace=narrative-app && npm run build --workspace=map-app",
+    "dev:market": "npm run dev --workspace=market-app",
+    "dev:unified": "npm run dev --workspace=unified-app",
+    "build": "npm run build --workspace=lib && npm run build --workspace=narrative-app && npm run build --workspace=map-app && npm run build --workspace=market-app && npm run build --workspace=unified-app",
     "build:lib": "npm run build --workspace=lib",
     "build:app": "npm run build --workspace=narrative-app",
     "build:map": "npm run build --workspace=map-app",
+    "build:market": "npm run build --workspace=market-app",
+    "build:unified": "npm run build --workspace=unified-app",
     "lint": "npm run lint --workspaces",
     "test": "npm run test --workspaces"
   },

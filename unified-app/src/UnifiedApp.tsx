@@ -32,6 +32,14 @@ import { ModuleSwitcher } from './components/ModuleSwitcher';
 import { NarrativeModuleWrapper } from './components/NarrativeModuleWrapper';
 import { MarketModuleWrapper } from './components/MarketModuleWrapper';
 import { MapModuleWrapper } from './components/MapModuleWrapper';
+import {
+  WorkspaceSwitcher,
+  loadWorkspaceList,
+  saveWorkspaceList,
+  upsertWorkspace,
+  type WorkspaceInfo,
+} from './components/WorkspaceSwitcher';
+import { NewWorkspaceModal } from './components/NewWorkspaceModal';
 
 /**
  * Main Unified Application Component
@@ -52,8 +60,10 @@ export function UnifiedApp() {
   const [showIdentityModal, setShowIdentityModal] = useState(false);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showVerifyScanner, setShowVerifyScanner] = useState(false);
+  const [showNewWorkspaceModal, setShowNewWorkspaceModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [hiddenUserDids, setHiddenUserDids] = useState<Set<string>>(new Set());
+  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>(() => loadWorkspaceList());
 
   // Document from Automerge
   const [doc] = useDocument<UnifiedDocument>(documentId ?? undefined);
@@ -148,18 +158,88 @@ export function UnifiedApp() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [documentId, repo]);
 
-  // Handlers
-  const handleNewDocument = useCallback(() => {
-    if (!identity || !repo) return;
+  // Track current workspace in list
+  useEffect(() => {
+    if (!documentId || !doc) return;
 
-    const newDoc = createEmptyUnifiedDoc(identity);
-    const handle = repo.create<UnifiedDocument>(newDoc);
-    const newDocId = handle.documentId;
-    setDocumentId(newDocId);
-    setDocHandle(handle);
-    saveDocumentId('unifiedDocId', newDocId);
-    window.location.hash = `doc=${newDocId}`;
-  }, [identity, repo]);
+    const workspaceInfo: WorkspaceInfo = {
+      id: documentId.toString(),
+      name: doc.context?.name || 'Workspace',
+      avatar: doc.context?.avatar,
+      lastAccessed: Date.now(),
+    };
+
+    setWorkspaces((prev) => {
+      const updated = upsertWorkspace(prev, workspaceInfo);
+      saveWorkspaceList(updated);
+      return updated;
+    });
+  }, [documentId, doc?.context?.name, doc?.context?.avatar]);
+
+  // Get current workspace info
+  const currentWorkspace: WorkspaceInfo | null =
+    documentId && doc
+      ? {
+          id: documentId.toString(),
+          name: doc.context?.name || 'Workspace',
+          avatar: doc.context?.avatar,
+          lastAccessed: Date.now(),
+        }
+      : null;
+
+  // Handlers
+  const handleSwitchWorkspace = useCallback(
+    (workspaceId: string) => {
+      if (!repo) return;
+
+      const docId = workspaceId as DocumentId;
+      setDocumentId(docId);
+      saveDocumentId('unifiedDocId', docId);
+      window.location.hash = `doc=${docId}`;
+      const handle = repo.find<UnifiedDocument>(docId);
+      setDocHandle(handle);
+    },
+    [repo]
+  );
+
+  const handleCreateWorkspace = useCallback(
+    (name: string, avatarDataUrl?: string) => {
+      if (!identity || !repo) return;
+
+      const newDoc = createEmptyUnifiedDoc(identity);
+      // Set workspace name and avatar
+      newDoc.context = {
+        name,
+        avatar: avatarDataUrl,
+      };
+
+      const handle = repo.create<UnifiedDocument>(newDoc);
+      const newDocId = handle.documentId;
+      setDocumentId(newDocId);
+      setDocHandle(handle);
+      saveDocumentId('unifiedDocId', newDocId);
+      window.location.hash = `doc=${newDocId}`;
+
+      // Add to workspace list
+      const newWorkspace: WorkspaceInfo = {
+        id: newDocId.toString(),
+        name,
+        avatar: avatarDataUrl,
+        lastAccessed: Date.now(),
+      };
+      setWorkspaces((prev) => {
+        const updated = upsertWorkspace(prev, newWorkspace);
+        saveWorkspaceList(updated);
+        return updated;
+      });
+    },
+    [identity, repo]
+  );
+
+  const handleNewDocument = useCallback(() => {
+    // Open the modal instead of creating directly
+    setShowNewWorkspaceModal(true);
+  }, []);
 
   const handleResetIdentity = useCallback(() => {
     localStorage.removeItem('narrativeIdentity');
@@ -275,12 +355,15 @@ export function UnifiedApp() {
     <div className="w-screen h-screen bg-base-200 flex flex-col overflow-hidden">
       {/* Navbar */}
       <div className="navbar bg-base-100 shadow-lg z-[600] flex-shrink-0">
-        {/* Logo - Left */}
+        {/* Workspace Switcher - Left */}
         <div className="navbar-start">
-          <a className="btn btn-ghost text-xl flex items-center gap-2">
-            <img src={logoUrl} alt="Narrative" className="h-12 pb-2 text-current" />
-            <span className="hidden sm:inline">Unified</span>
-          </a>
+          <WorkspaceSwitcher
+            currentWorkspace={currentWorkspace}
+            workspaces={workspaces}
+            logoUrl={logoUrl}
+            onSwitchWorkspace={handleSwitchWorkspace}
+            onNewWorkspace={handleNewDocument}
+          />
         </div>
 
         {/* Module Switcher - Center */}
@@ -438,6 +521,12 @@ export function UnifiedApp() {
         onTrustBack={handleTrustBack}
         onDecline={handleDeclineTrust}
         onShowToast={setToastMessage}
+      />
+
+      <NewWorkspaceModal
+        isOpen={showNewWorkspaceModal}
+        onClose={() => setShowNewWorkspaceModal(false)}
+        onCreate={handleCreateWorkspace}
       />
 
       {toastMessage && (

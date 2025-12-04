@@ -25,7 +25,9 @@ export function createViteConfig(options: AppViteConfigOptions = {}) {
   const { appName, port = 3000, extend = {} } = options;
 
   const isGithubActions = process.env.GITHUB_ACTIONS === 'true';
-  const base = isGithubActions && appName ? `/${appName}/` : '/';
+  // GITHUB_REPOSITORY is e.g. "it4change/narrative" -> extract repo name
+  const repoName = process.env.GITHUB_REPOSITORY?.split('/')[1] || '';
+  const base = isGithubActions && appName && repoName ? `/${repoName}/${appName}/` : '/';
 
   return defineConfig({
     base,

@@ -22,8 +22,8 @@ export default defineConfig({
       includeAssets: ['logo.svg', 'favicon.ico'],
 
       manifest: {
-        name: 'Narrative Unified',
-        short_name: 'Narrative',
+        name: 'Unified',
+        short_name: 'Unified',
         description: 'Collaborative local-first workspace with maps, marketplace and discussions',
         theme_color: '#1d2440',
         background_color: '#1d2440',

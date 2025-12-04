@@ -28,6 +28,15 @@ export type UnifiedDocument = BaseDocument<UnifiedModuleData>;
  * Create empty unified document
  */
 export function createEmptyUnifiedDoc(creatorIdentity: UserIdentity): UnifiedDocument {
+  // Build identity profile, only including defined values (Automerge doesn't allow undefined)
+  const identityProfile: Record<string, string> = {};
+  if (creatorIdentity.displayName !== undefined) {
+    identityProfile.displayName = creatorIdentity.displayName;
+  }
+  if (creatorIdentity.publicKey !== undefined) {
+    identityProfile.publicKey = creatorIdentity.publicKey;
+  }
+
   return {
     version: '1.0.0',
     lastModified: Date.now(),
@@ -40,10 +49,7 @@ export function createEmptyUnifiedDoc(creatorIdentity: UserIdentity): UnifiedDoc
       map: true,
     },
     identities: {
-      [creatorIdentity.did]: {
-        displayName: creatorIdentity.displayName,
-        publicKey: creatorIdentity.publicKey,
-      },
+      [creatorIdentity.did]: identityProfile,
     },
     trustAttestations: {},
     data: {

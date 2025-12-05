@@ -249,8 +249,13 @@ export function AppShell<TDoc>({
     const docIdToUse = urlDocId || savedDocId;
 
     if (docIdToUse) {
-      // Validate AutomergeUrl format before attempting to load
-      if (!isValidAutomergeUrl(docIdToUse)) {
+      // Normalize document ID: add automerge: prefix if missing
+      const normalizedDocId = docIdToUse.startsWith('automerge:')
+        ? docIdToUse
+        : `automerge:${docIdToUse}`;
+
+      // Validate AutomergeUrl format
+      if (!isValidAutomergeUrl(normalizedDocId)) {
         console.error('Invalid document ID format:', docIdToUse);
         setLoadError(`Ungültige Dokument-ID: "${docIdToUse.substring(0, 30)}..."`);
         // Clear invalid ID from storage
@@ -260,9 +265,8 @@ export function AppShell<TDoc>({
       }
 
       try {
-        // Load existing document (from URL or localStorage)
-        // docIdToUse is validated as AutomergeUrl above
-        const handle = repo.find(docIdToUse as AutomergeUrl);
+        // Load existing document
+        const handle = repo.find(normalizedDocId as AutomergeUrl);
 
         // Wait for document to be ready with timeout
         const timeoutPromise = new Promise<never>((_, reject) => {

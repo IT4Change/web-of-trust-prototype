@@ -63,10 +63,17 @@ export function useCrossTabSync(options: CrossTabSyncOptions = {}): void {
     (event: StorageEvent) => {
       // Identity changed in another tab
       if (event.key === SHARED_IDENTITY_KEY) {
+        const oldIdentity = event.oldValue ? JSON.parse(event.oldValue) as StoredIdentity : null;
         const newIdentity = event.newValue ? JSON.parse(event.newValue) as StoredIdentity : null;
+
+        // Check if DID actually changed (not just name/avatar)
+        const didChanged = oldIdentity?.did !== newIdentity?.did;
+
         console.log('🔄 Identity changed in another tab', {
-          oldDid: event.oldValue ? JSON.parse(event.oldValue)?.did?.substring(0, 30) : null,
+          oldDid: oldIdentity?.did?.substring(0, 30),
           newDid: newIdentity?.did?.substring(0, 30),
+          didChanged,
+          nameChanged: oldIdentity?.displayName !== newIdentity?.displayName,
         });
 
         if (onIdentityChange) {
@@ -74,8 +81,10 @@ export function useCrossTabSync(options: CrossTabSyncOptions = {}): void {
           if (shouldReload) {
             window.location.reload();
           }
-        } else if (autoReloadOnIdentityChange) {
-          // Default behavior: reload on identity change
+        } else if (autoReloadOnIdentityChange && didChanged) {
+          // Only reload if the DID actually changed (not just name/avatar)
+          // Name/avatar updates come through Automerge sync via UserDocument
+          console.log('🔄 DID changed, reloading page...');
           window.location.reload();
         }
       }

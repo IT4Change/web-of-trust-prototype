@@ -17,8 +17,8 @@ export default defineConfig({
     topLevelAwait(),
     basicSsl(), // Enable HTTPS for local development (required for crypto.subtle)
     VitePWA({
-      // Use 'prompt' strategy - shows update notification to user
-      registerType: 'prompt',
+      // Auto-update: new service worker activates immediately
+      registerType: 'autoUpdate',
 
       // Include all assets for offline support
       includeAssets: ['logo.svg', 'favicon.ico'],
@@ -103,11 +103,13 @@ export default defineConfig({
         globPatterns: ['**/*.{css,html,ico,png,svg}'],
         // Allow the plugin to work, but we exclude large files via globPatterns
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3MB (just to prevent errors)
-        // Skip waiting and claim clients immediately when user accepts update
-        skipWaiting: false,
-        clientsClaim: false,
+        // Auto-update: activate new SW immediately without waiting
+        skipWaiting: true,
+        clientsClaim: true,
         // Don't block navigation with precache
         navigateFallback: null,
+        // Clean up old caches on update
+        cleanupOutdatedCaches: true,
       },
 
       // Dev options

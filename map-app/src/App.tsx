@@ -12,6 +12,7 @@ function App() {
       repo={repo}
       createEmptyDocument={createEmptyMapDoc}
       storagePrefix="map"
+      enableUserDocument
     >
       {(props) => <MapView {...props} />}
     </AppShell>

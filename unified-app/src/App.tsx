@@ -1,27 +1,32 @@
 /**
  * Unified App - Root Component
  *
- * Sets up Automerge Repo with storage and network adapters.
+ * Uses the standard AppShell pattern like all other apps.
  */
 
-import { Repo } from '@automerge/automerge-repo';
-import { BrowserWebSocketClientAdapter } from '@automerge/automerge-repo-network-websocket';
-import { IndexedDBStorageAdapter } from '@automerge/automerge-repo-storage-indexeddb';
-import { RepoContext } from '@automerge/automerge-repo-react-hooks';
+import { useRepository, AppShell } from 'narrative-ui';
+import { createEmptyUnifiedDoc } from './types';
 import { UnifiedApp } from './UnifiedApp';
 import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 
-// Initialize Automerge Repo with IndexedDB storage and WebSocket sync
-const repo = new Repo({
-  storage: new IndexedDBStorageAdapter(),
-  network: [new BrowserWebSocketClientAdapter('wss://sync.automerge.org')],
-});
+function App() {
+  const repo = useRepository({
+    syncServer: 'wss://sync.automerge.org',
+  });
 
-export function App() {
   return (
-    <RepoContext.Provider value={repo}>
-      <UnifiedApp />
+    <>
+      <AppShell
+        repo={repo}
+        createEmptyDocument={createEmptyUnifiedDoc}
+        storagePrefix="unified"
+        enableUserDocument
+      >
+        {(props) => <UnifiedApp {...props} />}
+      </AppShell>
       <PWAUpdatePrompt />
-    </RepoContext.Provider>
+    </>
   );
 }
+
+export { App };

@@ -26,8 +26,13 @@ export type UnifiedDocument = BaseDocument<UnifiedModuleData>;
 
 /**
  * Create empty unified document
+ * Signature matches AppShell's createEmptyDocument requirements
  */
-export function createEmptyUnifiedDoc(creatorIdentity: UserIdentity): UnifiedDocument {
+export function createEmptyUnifiedDoc(
+  creatorIdentity: UserIdentity,
+  workspaceName?: string,
+  workspaceAvatar?: string
+): UnifiedDocument {
   // Build identity profile, only including defined values (Automerge doesn't allow undefined)
   const identityProfile: Record<string, string> = {};
   if (creatorIdentity.displayName !== undefined) {
@@ -37,12 +42,18 @@ export function createEmptyUnifiedDoc(creatorIdentity: UserIdentity): UnifiedDoc
     identityProfile.publicKey = creatorIdentity.publicKey;
   }
 
+  // Build context with optional name and avatar
+  const context: { name: string; avatar?: string } = {
+    name: workspaceName || 'New Workspace',
+  };
+  if (workspaceAvatar) {
+    context.avatar = workspaceAvatar;
+  }
+
   return {
     version: '1.0.0',
     lastModified: Date.now(),
-    context: {
-      name: 'New Workspace',
-    },
+    context,
     enabledModules: {
       narrative: true,
       market: true,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { DocumentId } from '@automerge/automerge-repo';
 import { useRepo } from '@automerge/automerge-repo-react-hooks';
 import { AppLayout, type AppContextValue } from 'narrative-ui';
@@ -7,7 +7,8 @@ import type { ListingType, CategoryId, MarketAppDoc } from '../schema';
 import { CATEGORIES } from '../schema';
 import { ListingCard } from './ListingCard';
 import { CreateListingModal } from './CreateListingModal';
-import { exposeDocToConsole } from '../debug';
+// Debug extensions are auto-initialized via main.tsx import
+import '../debug';
 
 interface MainViewProps {
   documentId: DocumentId;
@@ -53,10 +54,7 @@ export function MainView({
 
   const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
 
-  // Debug
-  useEffect(() => {
-    exposeDocToConsole(doc ?? null);
-  }, [doc]);
+  // Debug state is automatically updated via useAppContext in AppLayout
 
   const handleCreateListing = (data: {
     type: ListingType;

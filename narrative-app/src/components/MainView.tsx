@@ -7,8 +7,9 @@ import type { OpinionGraphDoc } from '../schema/opinion-graph';
 import { AssumptionList } from './AssumptionList';
 import { CreateAssumptionModal } from './CreateAssumptionModal';
 import { ImportModal } from './ImportModal';
-import { useEffect, useState } from 'react';
-import { exposeDocToConsole, exposeUserDocToConsole } from '../debug';
+import { useState } from 'react';
+// Debug extensions are auto-initialized via main.tsx import
+import '../debug';
 
 interface MainViewProps {
   documentId: DocumentId;
@@ -54,18 +55,7 @@ export function MainView({
 
   const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
 
-  // Debug - expose both docs to console
-  useEffect(() => {
-    if (narrative?.doc) {
-      exposeDocToConsole(narrative.doc);
-    }
-  }, [narrative?.doc]);
-
-  useEffect(() => {
-    if (userDoc) {
-      exposeUserDocToConsole(userDoc);
-    }
-  }, [userDoc]);
+  // Debug state is automatically updated via useAppContext in AppLayout
 
   const handleImportAssumptions = async (importText: string) => {
     if (!narrative) return;

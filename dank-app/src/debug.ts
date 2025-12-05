@@ -1,79 +1,26 @@
 /**
- * Debug utilities for inspecting Dank Wallet data structure
- * Import this in main.tsx to expose data to browser console
+ * Dank App - Debug Extensions
+ *
+ * This app uses the central __narrative debug tools from narrative-ui.
+ * No app-specific extensions needed yet.
+ *
+ * Available commands (from lib):
+ *   __narrative.help()       - Show all available commands
+ *   __narrative.userDoc()    - Get user document
+ *   __narrative.doc()        - Get workspace document
+ *   __narrative.loadDoc(id)  - Load any document by ID
  */
 
 import type { DankWalletDoc } from './schema';
+import type { NarrativeDebug } from 'narrative-ui';
 
-/**
- * Expose the document to the browser console for debugging
- */
-export function exposeDocToConsole(doc: DankWalletDoc | null) {
-  if (typeof window !== 'undefined') {
-    (window as any).__dankWalletDoc = doc;
-    console.log('📊 Document exposed as window.__dankWalletDoc');
+// Extend the global window type with app-specific document type
+declare global {
+  interface Window {
+    __narrative: NarrativeDebug;
+    __doc: DankWalletDoc | null;
   }
 }
 
-/**
- * Pretty print document structure to console
- */
-export function printDocStructure(doc: DankWalletDoc | null) {
-  if (!doc) {
-    console.log('❌ No document loaded');
-    return;
-  }
-
-  console.group('📊 Dank Wallet Document Structure');
-
-  console.group('👥 Identities');
-  console.table(doc.identities);
-  console.groupEnd();
-
-  console.group('📦 Data');
-  console.log(doc.data);
-  console.groupEnd();
-
-  console.group('📊 Document Stats');
-  console.log('Version:', doc.version);
-  console.log('Last Modified:', new Date(doc.lastModified).toLocaleString());
-  console.log('Total Users:', Object.keys(doc.identities).length);
-  console.groupEnd();
-
-  console.groupEnd();
-}
-
-/**
- * Export document to JSON file
- */
-export function exportDocToJson(doc: DankWalletDoc | null) {
-  if (!doc) {
-    console.error('❌ No document to export');
-    return;
-  }
-
-  const json = JSON.stringify(doc, null, 2);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `dankWallet-doc-${Date.now()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  console.log('✅ Document exported to JSON file');
-}
-
-// Make debug functions available in console
-if (typeof window !== 'undefined') {
-  (window as any).__dankWalletDebug = {
-    print: printDocStructure,
-    export: exportDocToJson,
-  };
-
-  console.log('🛠️  Dank Wallet Debug Tools loaded!');
-  console.log('Available commands:');
-  console.log('  __dankWalletDebug.print(__dankWalletDoc)   - Print document structure');
-  console.log('  __dankWalletDebug.export(__dankWalletDoc)  - Export document to JSON');
-}
+// No additional initialization needed - central debug tools handle everything
+console.log('💰 Dank App: Using central __narrative debug tools. Type __narrative.help() for commands.');

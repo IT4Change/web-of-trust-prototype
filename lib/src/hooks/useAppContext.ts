@@ -36,6 +36,7 @@ import type { UserDocument } from '../schema/userDocument';
 import { addTrustGiven, addTrustReceived, removeTrustGiven, updateUserProfile } from '../schema/userDocument';
 import { signEntity, verifyEntitySignature } from '../utils/signature';
 import { extractPublicKeyFromDid, base64Encode } from '../utils/did';
+import { updateDebugState } from '../utils/debug';
 
 // Storage key for seen trust attestations
 const TRUST_STORAGE_KEY = 'narrativeTrustNotifications';
@@ -312,6 +313,15 @@ export function useAppContext<TData = unknown>(
       return updated;
     });
   }, [documentId, doc, effectiveWorkspaceName, workspaceAvatar]);
+
+  // Update debug state when documents change (for console debugging)
+  useEffect(() => {
+    updateDebugState({
+      userDoc: userDoc ?? null,
+      doc: doc as BaseDocument<unknown> | null,
+      repo,
+    });
+  }, [doc, userDoc, repo]);
 
   // Register own identity in workspace identityLookup on join
   useEffect(() => {

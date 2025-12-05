@@ -12,6 +12,7 @@ function App() {
       repo={repo}
       createEmptyDocument={createEmptyDankWalletDoc}
       storagePrefix="dankWallet"
+      enableUserDocument
     >
       {(props) => <MainView {...props} />}
     </AppShell>

@@ -31,7 +31,7 @@ import {
   clearUserDocId,
 } from '../hooks/useUserDocument';
 import { LoadingScreen } from './LoadingScreen';
-import { initDebugTools } from '../utils/debug';
+import { initDebugTools, updateDebugState } from '../utils/debug';
 import { useCrossTabSync } from '../hooks/useCrossTabSync';
 import { isValidAutomergeUrl } from '@automerge/automerge-repo';
 
@@ -119,15 +119,38 @@ export function AppShell<TDoc>({
   const [userDocId, setUserDocId] = useState<string | undefined>(undefined);
   const [userDocHandle, setUserDocHandle] = useState<DocHandle<UserDocument> | undefined>(undefined);
 
-  // Initialize debug tools on mount
+  // Initialize debug tools on mount and set repo
   useEffect(() => {
     initDebugTools();
-  }, []);
+    updateDebugState({ repo });
+  }, [repo]);
 
   // Cross-tab sync: reload when identity changes in another tab
   useCrossTabSync({
     autoReloadOnIdentityChange: true,
   });
+
+  // Update debug state when userDocHandle changes
+  useEffect(() => {
+    if (!userDocHandle) return;
+
+    // Initial update
+    const doc = userDocHandle.docSync();
+    if (doc) {
+      updateDebugState({ userDoc: doc });
+    }
+
+    // Subscribe to changes
+    const onChange = () => {
+      const updatedDoc = userDocHandle.docSync();
+      updateDebugState({ userDoc: updatedDoc });
+    };
+
+    userDocHandle.on('change', onChange);
+    return () => {
+      userDocHandle.off('change', onChange);
+    };
+  }, [userDocHandle]);
 
   // Initialize document and identity on mount
   useEffect(() => {

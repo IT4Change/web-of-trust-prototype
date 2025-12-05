@@ -5,15 +5,22 @@
  * to help with testing and debugging.
  *
  * Access via browser console:
- * - window.__narrative - Debug namespace
- * - window.__userDoc - Current user document
- * - window.__doc - Current workspace document
+ * - window.__narrative - Debug namespace with all commands
+ * - window.__userDoc - Current user document (auto-updated)
+ * - window.__doc - Current workspace document (auto-updated)
+ *
+ * Load any document by ID:
+ * - __narrative.loadDoc('automerge:xyz...')
+ * - __narrative.loadUserDoc('did:key:z6Mk...')
  */
 
 import type { UserDocument } from '../schema/userDocument';
 import type { BaseDocument } from '../schema/document';
 import { loadSharedIdentity, type StoredIdentity } from './storage';
-import { loadUserDocId } from '../hooks/useUserDocument';
+import type { Repo, AutomergeUrl } from '@automerge/automerge-repo';
+
+// Internal repo reference for loading arbitrary documents
+let _repo: Repo | null = null;
 
 // Type declarations for window object
 declare global {
@@ -40,6 +47,10 @@ export interface NarrativeDebug {
   // Workspace Document
   doc: () => BaseDocument<unknown> | null;
   printDoc: () => void;
+
+  // Load arbitrary documents
+  loadDoc: (docId: string) => Promise<unknown>;
+  loadUserDoc: (did: string) => Promise<UserDocument | null>;
 
   // Export
   exportUserDoc: () => void;
@@ -146,23 +157,87 @@ function exportToJson(data: unknown, filename: string): void {
 }
 
 /**
+ * Load any document by ID
+ */
+async function loadDocById(docId: string): Promise<unknown> {
+  if (!_repo) {
+    console.error('❌ Repo not initialized. Debug tools need to be initialized with a repo.');
+    return null;
+  }
+
+  // Normalize document ID
+  const normalizedId = docId.startsWith('automerge:') ? docId : `automerge:${docId}`;
+
+  console.log(`🔄 Loading document: ${normalizedId.substring(0, 50)}...`);
+
+  try {
+    const handle = _repo.find(normalizedId as AutomergeUrl);
+    await handle.whenReady();
+    const doc = handle.docSync();
+
+    if (doc) {
+      console.log('✅ Document loaded:', doc);
+      return doc;
+    } else {
+      console.error('❌ Document not found or empty');
+      return null;
+    }
+  } catch (error) {
+    console.error('❌ Failed to load document:', error);
+    return null;
+  }
+}
+
+/**
+ * Load a user's UserDocument by their DID
+ * Looks up the userDocUrl in trust attestations (trustReceived contains trusterUserDocUrl)
+ */
+async function loadUserDocByDid(did: string): Promise<UserDocument | null> {
+  if (!_repo) {
+    console.error('❌ Repo not initialized.');
+    return null;
+  }
+
+  // Check if we have a userDocUrl for this DID in our trust relationships
+  const currentUserDoc = window.__userDoc;
+  if (currentUserDoc) {
+    // Check trustReceived - attestations have trusterUserDocUrl pointing to the person who trusted us
+    const trustReceived = Object.values(currentUserDoc.trustReceived || {});
+    for (const attestation of trustReceived) {
+      if (attestation.trusterDid === did && attestation.trusterUserDocUrl) {
+        console.log(`📍 Found userDocUrl in trustReceived for ${did.substring(0, 30)}...`);
+        return (await loadDocById(attestation.trusterUserDocUrl)) as UserDocument | null;
+      }
+    }
+
+    // Check trustGiven - the attestations we wrote also have trusterUserDocUrl (our own URL)
+    // But we need the trustee's URL, which we may have stored when they trusted us back
+    // For now, we can only resolve users who have trusted us (their URL is in trustReceived)
+  }
+
+  console.error(`❌ No userDocUrl found for DID: ${did.substring(0, 40)}...`);
+  console.log('💡 Tip: You can only load UserDocs of users who have trusted you (their URL is in trustReceived).');
+  return null;
+}
+
+/**
  * Print help information
  */
 function printHelp(): void {
   console.log(`
-🛠️  Narrative Debug Tools
-========================
+🛠️  Narrative Debug Tools v2.0
+===============================
 
 📌 Quick Access:
-  __userDoc              - Current user document
-  __doc                  - Current workspace document
+  __userDoc              - Current user document (auto-updated)
+  __doc                  - Current workspace document (auto-updated)
   __identity             - Current identity
 
-📌 Commands:
-  __narrative.help()           - Show this help
+📌 Identity:
   __narrative.identity()       - Get current identity
   __narrative.exportIdentity() - Export identity to file
 
+📌 User Document:
   __narrative.userDoc()        - Get user document
   __narrative.printUserDoc()   - Pretty print user document
   __narrative.trustGiven()     - Show outgoing trust
@@ -170,13 +245,19 @@ function printHelp(): void {
   __narrative.workspaces()     - Show workspaces
   __narrative.exportUserDoc()  - Export user doc to JSON
 
+📌 Workspace Document:
   __narrative.doc()            - Get workspace document
   __narrative.printDoc()       - Pretty print workspace doc
   __narrative.exportDoc()      - Export workspace doc to JSON
 
+📌 Load Any Document:
+  __narrative.loadDoc('automerge:xyz...')     - Load any document by ID
+  __narrative.loadUserDoc('did:key:z6Mk...')  - Load a user's UserDocument
+
 📌 Tips:
-  - Documents are reactive - they update when changes sync
+  - Documents are reactive - __userDoc and __doc update automatically
   - Use JSON.stringify(__userDoc, null, 2) for raw JSON
+  - loadUserDoc() only works for users you have trust relationships with
   - All commands work in production builds
   `);
 }
@@ -271,6 +352,10 @@ export function initDebugTools(): void {
       }
     },
 
+    // Load arbitrary documents
+    loadDoc: loadDocById,
+    loadUserDoc: loadUserDocByDid,
+
     // Help
     help: printHelp,
   };
@@ -285,12 +370,13 @@ export function initDebugTools(): void {
 }
 
 /**
- * Update debug state with current documents
- * Call this when documents change
+ * Update debug state with current documents and repo
+ * Call this when documents change or on app initialization
  */
 export function updateDebugState(options: {
   userDoc?: UserDocument | null;
   doc?: BaseDocument<unknown> | null;
+  repo?: Repo;
 }): void {
   if (typeof window === 'undefined') return;
 
@@ -299,6 +385,9 @@ export function updateDebugState(options: {
   }
   if (options.doc !== undefined) {
     window.__doc = options.doc;
+  }
+  if (options.repo !== undefined) {
+    _repo = options.repo;
   }
   window.__identity = loadSharedIdentity();
 }

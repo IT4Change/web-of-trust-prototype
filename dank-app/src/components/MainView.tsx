@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import type { DocumentId } from '@automerge/automerge-repo';
 import { useRepo } from '@automerge/automerge-repo-react-hooks';
 import { AppLayout, type AppContextValue } from 'narrative-ui';
 import type { DankWalletDoc, Voucher } from '../schema';
-import { exposeDocToConsole } from '../debug';
+// Debug extensions are auto-initialized via import
+import '../debug';
 import { useDankWallet } from '../hooks/useDankWallet';
 import { VoucherCard } from './VoucherCard';
 import { BalanceCard } from './BalanceCard';
@@ -57,10 +58,7 @@ export function MainView({
 
   const logoUrl = `${import.meta.env.BASE_URL}dankwallet-icon.svg`;
 
-  // Expose doc to console for debugging
-  useEffect(() => {
-    exposeDocToConsole(doc ?? null);
-  }, [doc]);
+  // Debug state is automatically updated via useAppContext in AppLayout
 
   const handleCreateVoucher = async (params: {
     recipientId: string;

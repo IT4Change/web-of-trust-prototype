@@ -5,6 +5,7 @@ import { MainView } from './components/MainView';
 function App() {
   const repo = useRepository({
     syncServer: 'wss://sync.automerge.org',
+    enableBroadcastChannel: true,
   });
 
   return (

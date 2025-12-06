@@ -1,0 +1,4 @@
+# Add this to your main Caddy config
+# sync.example.com {
+#     reverse_proxy automerge-sync:3030
+# }

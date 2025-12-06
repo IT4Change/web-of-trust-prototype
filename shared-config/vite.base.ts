@@ -1,7 +1,8 @@
-import { defineConfig, type UserConfig } from 'vite';
+import { defineConfig, type UserConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
+import path from 'path';
 
 export interface AppViteConfigOptions {
   /** App name for GitHub Pages base path (e.g., 'narrative' -> '/narrative/') */
@@ -28,22 +29,38 @@ export function createViteConfig(options: AppViteConfigOptions = {}) {
   // Custom domain deployment: only use app name as subpath
   const base = isGithubActions && appName ? `/${appName}/` : '/';
 
-  return defineConfig({
-    base,
-    plugins: [
-      react(),
-      wasm(),
-      topLevelAwait(),
-    ],
-    server: {
-      port,
-      open: true,
-    },
-    optimizeDeps: {
-      // Allow Vite to prebundle Automerge for proper WASM initialization order
-      // The vite-plugin-wasm handles WASM loading
-    },
-    ...extend,
+  // Monorepo root directory (one level up from app directories)
+  const monorepoRoot = path.resolve(__dirname, '..');
+
+  return defineConfig(({ mode }) => {
+    // Load env from monorepo root first, then app-specific
+    const rootEnv = loadEnv(mode, monorepoRoot, '');
+    const appEnv = loadEnv(mode, process.cwd(), '');
+
+    // Merge: app-specific env takes precedence over root env
+    const env = { ...rootEnv, ...appEnv };
+
+    return {
+      base,
+      plugins: [
+        react(),
+        wasm(),
+        topLevelAwait(),
+      ],
+      server: {
+        port,
+        open: true,
+      },
+      define: {
+        // Make VITE_ prefixed env vars available
+        'import.meta.env.VITE_SYNC_SERVER': JSON.stringify(env.VITE_SYNC_SERVER),
+      },
+      optimizeDeps: {
+        // Allow Vite to prebundle Automerge for proper WASM initialization order
+        // The vite-plugin-wasm handles WASM loading
+      },
+      ...extend,
+    };
   });
 }
 

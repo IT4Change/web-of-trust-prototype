@@ -1,0 +1,12 @@
+services:
+  automerge-sync:
+    image: ghcr.io/automerge/automerge-repo-sync-server:main
+    restart: unless-stopped
+    expose:
+      - "3030"
+    networks:
+      - net
+
+networks:
+  net:
+    external: true

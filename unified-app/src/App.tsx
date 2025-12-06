@@ -10,7 +10,7 @@ import { UnifiedApp } from './UnifiedApp';
 
 function App() {
   const repo = useRepository({
-    syncServer: 'wss://sync.automerge.org',
+    syncServer: import.meta.env.VITE_SYNC_SERVER || 'wss://sync.automerge.org',
     enableBroadcastChannel: true,
   });
 

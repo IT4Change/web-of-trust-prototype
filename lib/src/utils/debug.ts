@@ -300,11 +300,19 @@ function printHelp(): void {
   __narrative.loadDoc('automerge:xyz...')     - Load any document by ID
   __narrative.loadUserDoc('did:key:z6Mk...')  - Load a user's UserDocument
 
+📌 Sync Monitoring:
+  __narrative.syncStatus()         - Show sync status of all known documents
+                                     (userDoc, workspaceDoc, trusted users' docs)
+  __narrative.watchSync(docUrl)    - Watch a document for changes in real-time
+  __narrative.stopAllWatchers()    - Stop all sync watchers
+  __narrative.testSync(docUrl)     - Test loading a specific document
+
 📌 Tips:
   - Documents are reactive - __userDoc and __doc update automatically
   - Use JSON.stringify(__userDoc, null, 2) for raw JSON
   - loadUserDoc() only works for users you have trust relationships with
   - All commands work in production builds
+  - syncStatus() shows all externally known docs from trust relationships
   `);
 }
 
@@ -492,6 +500,118 @@ export function initDebugTools(): void {
         }
         console.groupEnd();
       }
+
+      // Known external documents (from trust relationships)
+      console.group('🔗 Known External Documents');
+
+      const knownDocs = new Map<string, { source: string; did?: string; displayName?: string }>();
+      const userDoc = window.__userDoc;
+
+      // Collect from trustReceived (people who trust us)
+      if (userDoc?.trustReceived) {
+        for (const [trusterDid, attestation] of Object.entries(userDoc.trustReceived)) {
+          if (attestation.trusterUserDocUrl) {
+            const existing = knownDocs.get(attestation.trusterUserDocUrl);
+            knownDocs.set(attestation.trusterUserDocUrl, {
+              source: existing ? `${existing.source}, trustReceived` : 'trustReceived',
+              did: trusterDid,
+              displayName: _trustedUserProfiles[trusterDid]?.displayName,
+            });
+          }
+        }
+      }
+
+      // Collect from trustGiven (people we trust) - via identityLookup
+      if (userDoc?.trustGiven) {
+        const workspaceDoc = window.__doc;
+        for (const trusteeDid of Object.keys(userDoc.trustGiven)) {
+          const userDocUrl = workspaceDoc?.identityLookup?.[trusteeDid]?.userDocUrl;
+          if (userDocUrl) {
+            const existing = knownDocs.get(userDocUrl);
+            knownDocs.set(userDocUrl, {
+              source: existing ? `${existing.source}, trustGiven` : 'trustGiven (via identityLookup)',
+              did: trusteeDid,
+              displayName: _trustedUserProfiles[trusteeDid]?.displayName || workspaceDoc?.identityLookup?.[trusteeDid]?.displayName,
+            });
+          }
+        }
+      }
+
+      if (knownDocs.size === 0) {
+        console.log('No external documents known (no trust relationships with userDocUrls)');
+      } else {
+        console.log(`Found ${knownDocs.size} known external document(s):\n`);
+
+        // Check sync status for each known document
+        const statusResults: Array<{
+          url: string;
+          source: string;
+          did?: string;
+          displayName?: string;
+          loaded: boolean;
+          lastModified?: string;
+          trustGiven?: number;
+          trustReceived?: number;
+          error?: string;
+        }> = [];
+
+        for (const [docUrl, info] of knownDocs.entries()) {
+          try {
+            const handle = await _repo.find<UserDocument>(docUrl as AutomergeUrl);
+            const doc = handle.doc();
+
+            statusResults.push({
+              url: docUrl.substring(0, 45) + '...',
+              source: info.source,
+              did: info.did ? info.did.substring(0, 30) + '...' : undefined,
+              displayName: info.displayName,
+              loaded: !!doc,
+              lastModified: doc ? new Date(doc.lastModified).toLocaleString() : undefined,
+              trustGiven: doc ? Object.keys(doc.trustGiven || {}).length : undefined,
+              trustReceived: doc ? Object.keys(doc.trustReceived || {}).length : undefined,
+            });
+          } catch (err) {
+            statusResults.push({
+              url: docUrl.substring(0, 45) + '...',
+              source: info.source,
+              did: info.did ? info.did.substring(0, 30) + '...' : undefined,
+              displayName: info.displayName,
+              loaded: false,
+              error: String(err),
+            });
+          }
+        }
+
+        console.table(statusResults);
+
+        // Summary
+        const loadedCount = statusResults.filter(r => r.loaded).length;
+        const failedCount = statusResults.filter(r => !r.loaded).length;
+        console.log(`\n✅ Loaded: ${loadedCount}/${statusResults.length}`);
+        if (failedCount > 0) {
+          console.log(`❌ Failed to load: ${failedCount}`);
+        }
+      }
+
+      console.groupEnd();
+
+      // Trusted user profiles (loaded and subscribed)
+      console.group('👥 Trusted User Profiles (Subscribed)');
+      const profileCount = Object.keys(_trustedUserProfiles).length;
+      if (profileCount === 0) {
+        console.log('No trusted user profiles loaded.');
+      } else {
+        console.table(
+          Object.values(_trustedUserProfiles).map((p) => ({
+            displayName: p.displayName || '(no name)',
+            did: p.did.substring(0, 35) + '...',
+            hasAvatar: p.avatarUrl ? '✅' : '❌',
+            signatureStatus: p.profileSignatureStatus || 'unknown',
+            fetchedAt: new Date(p.fetchedAt).toLocaleString(),
+          }))
+        );
+      }
+      console.groupEnd();
 
       // Network status
       console.group('🌐 Network');

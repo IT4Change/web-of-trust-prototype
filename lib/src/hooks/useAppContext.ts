@@ -236,17 +236,13 @@ export interface AppContextValue<TData = unknown> {
     workspaces: WorkspaceInfo[];
     onSwitchWorkspace: (workspaceId: string) => void;
     onNewWorkspace: () => void;
-    onUpdateIdentity: (updates: { displayName?: string; avatarUrl?: string }) => void;
     onTrustUser: (trusteeDid: string, trusteeUserDocUrl?: string) => void;
-    onResetIdentity: () => void;
     onToggleUserVisibility: (did: string) => void;
     hiddenUserDids: Set<string>;
-    initialDisplayName?: string;
     onShowToast: (message: string) => void;
     hideWorkspaceSwitcher?: boolean;
     appTitle?: string;
     userDoc?: UserDocument | null;
-    userDocUrl?: string;
     trustedUserProfiles?: Record<string, TrustedUserProfile>;
   } | null;
 
@@ -962,17 +958,13 @@ export function useAppContext<TData = unknown>(
         workspaces,
         onSwitchWorkspace: handleSwitchWorkspace,
         onNewWorkspace: handleNewWorkspace,
-        onUpdateIdentity: handleUpdateIdentity,
         onTrustUser: handleTrustUser,
-        onResetIdentity: handleResetIdentity,
         onToggleUserVisibility: toggleUserVisibility,
         hiddenUserDids,
-        initialDisplayName: identity?.displayName,
         onShowToast: showToast,
         hideWorkspaceSwitcher,
         appTitle,
         userDoc,
-        userDocUrl,
         trustedUserProfiles,
       }
     : null;

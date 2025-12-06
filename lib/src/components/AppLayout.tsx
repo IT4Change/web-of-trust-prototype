@@ -9,7 +9,7 @@
  * Apps only need to provide their content via children render prop.
  */
 
-import { type ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
 import type { DocHandle } from '@automerge/automerge-repo';
 import { useRepo } from '@automerge/automerge-repo-react-hooks';
 import { useAppContext, type AppContextValue } from '../hooks/useAppContext';
@@ -21,6 +21,7 @@ import { TrustReciprocityModal } from './TrustReciprocityModal';
 import { NewWorkspaceModal } from './NewWorkspaceModal';
 import { UserProfileModal, type ProfileAction } from './UserProfileModal';
 import { Toast } from './Toast';
+import { exportIdentityToFile, importIdentityFromFile } from '../utils/storage';
 
 export interface AppLayoutProps<TDoc extends BaseDocument<unknown>> {
   /** The Automerge document */
@@ -191,6 +192,18 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
     repo,
   });
 
+  // Identity management handlers for profile modal
+  const handleExportIdentity = useCallback(() => {
+    exportIdentityToFile();
+  }, []);
+
+  const handleImportIdentity = useCallback(() => {
+    importIdentityFromFile(
+      undefined,
+      (error) => ctx.showToast(error)
+    );
+  }, [ctx]);
+
   // Show loading while document is not ready
   if (!doc || !docHandle) {
     return <>{loadingComponent ?? <DefaultLoading />}</>;
@@ -234,6 +247,12 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
           customActions={profileActions?.(profileDid, closeProfile) ?? []}
           hideTrustActions={hideProfileTrustActions}
           trustedUserProfiles={ctx.trustedUserProfiles}
+          // Edit features for own profile
+          userDoc={userDoc}
+          onUpdateIdentity={ctx.handleUpdateIdentity}
+          onExportIdentity={handleExportIdentity}
+          onImportIdentity={handleImportIdentity}
+          onResetIdentity={onResetIdentity}
         />
       )}
     </div>

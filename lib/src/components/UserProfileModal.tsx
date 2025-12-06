@@ -2,11 +2,14 @@ import { useState, useEffect } from 'react';
 import { UserAvatar } from './UserAvatar';
 import { QRCodeSVG } from 'qrcode.react';
 import type { BaseDocument } from '../schema/document';
+import type { UserDocument } from '../schema/userDocument';
 import type { TrustAttestation } from '../schema/identity';
 import type { TrustedUserProfile } from '../hooks/useAppContext';
 import { extractPublicKeyFromDid, base64Encode, getDefaultDisplayName } from '../utils/did';
 import { formatRelativeTime, formatFullDateTime } from '../utils/time';
 import { verifyEntitySignature } from '../utils/signature';
+import { processImageFile } from '../utils/imageProcessing';
+import { loadSharedIdentity, saveSharedIdentity } from '../utils/storage';
 
 type SignatureStatus = 'valid' | 'invalid' | 'missing' | 'pending';
 
@@ -55,6 +58,17 @@ interface UserProfileModalProps<TData = unknown> {
   hideTrustActions?: boolean;
   /** Profiles loaded from trusted users' UserDocuments (for avatar/name) */
   trustedUserProfiles?: Record<string, TrustedUserProfile>;
+  // --- Edit features for own profile ---
+  /** UserDocument for consistent profile data (preferred source) */
+  userDoc?: UserDocument | null;
+  /** Callback to update identity (name, avatar) - enables edit mode for own profile */
+  onUpdateIdentity?: (updates: { displayName?: string; avatarUrl?: string }) => void;
+  /** Callback to export identity */
+  onExportIdentity?: () => void;
+  /** Callback to import identity */
+  onImportIdentity?: () => void;
+  /** Callback to reset identity */
+  onResetIdentity?: () => void;
 }
 
 /**
@@ -87,15 +101,32 @@ export function UserProfileModal<TData = unknown>({
   customActions = [],
   hideTrustActions = false,
   trustedUserProfiles = {},
+  userDoc,
+  onUpdateIdentity,
+  onExportIdentity,
+  onImportIdentity,
+  onResetIdentity,
 }: UserProfileModalProps<TData>) {
   const [trustGivenStatus, setTrustGivenStatus] = useState<SignatureStatus>('pending');
   const [trustReceivedStatus, setTrustReceivedStatus] = useState<SignatureStatus>('pending');
 
+  // Edit states for own profile
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+  const [avatarError, setAvatarError] = useState('');
+
   const isOwnProfile = currentUserDid === did;
+  const canEdit = isOwnProfile && !!onUpdateIdentity;
   const workspaceProfile = doc.identities?.[did];
   const trustedProfile = trustedUserProfiles[did];
-  const displayName = trustedProfile?.displayName || workspaceProfile?.displayName || getDefaultDisplayName(did);
-  const avatarUrl = trustedProfile?.avatarUrl || workspaceProfile?.avatarUrl;
+  // For own profile with userDoc, prefer userDoc data
+  const displayName = (isOwnProfile && userDoc?.profile?.displayName)
+    || trustedProfile?.displayName
+    || workspaceProfile?.displayName
+    || getDefaultDisplayName(did);
+  const avatarUrl = (isOwnProfile && userDoc?.profile?.avatarUrl)
+    || trustedProfile?.avatarUrl
+    || workspaceProfile?.avatarUrl;
 
   // Determine trust relationship
   const hasTrustGiven = !!trustGiven;
@@ -120,6 +151,56 @@ export function UserProfileModal<TData = unknown>({
       setTrustReceivedStatus('missing');
     }
   }, [isOpen, trustGiven, trustReceived]);
+
+  // Sync nameInput when displayName changes
+  useEffect(() => {
+    setNameInput(displayName);
+  }, [displayName]);
+
+  // Avatar upload handler
+  const handleAvatarFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !onUpdateIdentity) return;
+
+    setAvatarError('');
+
+    try {
+      const { dataUrl, sizeKB } = await processImageFile(file, 128, 0.8);
+
+      if (sizeKB > 50) {
+        setAvatarError(`Warning: Avatar is ${sizeKB}KB (recommended: max 50KB). May cause slow sync.`);
+      }
+
+      // Save avatar immediately
+      onUpdateIdentity({ avatarUrl: dataUrl });
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : 'Error processing image');
+    }
+  };
+
+  // Remove avatar handler
+  const handleRemoveAvatar = () => {
+    if (!onUpdateIdentity) return;
+    onUpdateIdentity({ avatarUrl: '' });
+    setAvatarError('');
+  };
+
+  // Save name handler
+  const handleSaveName = () => {
+    const next = nameInput.trim();
+    if (!next || !onUpdateIdentity) return;
+
+    onUpdateIdentity({ displayName: next });
+
+    // Update shared identity in localStorage
+    const storedIdentity = loadSharedIdentity();
+    if (storedIdentity) {
+      storedIdentity.displayName = next;
+      saveSharedIdentity(storedIdentity);
+    }
+
+    setIsEditingName(false);
+  };
 
   if (!isOpen) return null;
 
@@ -165,15 +246,110 @@ export function UserProfileModal<TData = unknown>({
         {/* Own Profile: Avatar/Name on top, large QR below */}
         {isOwnProfile ? (
           <>
-            {/* Avatar and Name centered */}
+            {/* Avatar centered with optional edit overlay */}
             <div className="flex flex-col items-center mb-4 pt-2">
               <div className="relative mb-2">
                 <div className="w-20 h-20 rounded-full overflow-hidden ring-2 ring-primary ring-offset-2 ring-offset-base-100">
                   <UserAvatar did={did} avatarUrl={avatarUrl} size={80} />
                 </div>
-                <div className="absolute -bottom-1 -right-1 badge badge-primary badge-xs">Du</div>
+                {/* Edit overlay for avatar - only if canEdit */}
+                {canEdit && (
+                  <>
+                    <label
+                      htmlFor="avatar-upload"
+                      className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 hover:opacity-100 transition-opacity cursor-pointer"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                    </label>
+                    <input
+                      id="avatar-upload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleAvatarFileSelect}
+                    />
+                    {/* Delete avatar button */}
+                    {avatarUrl && (
+                      <button
+                        className="absolute -bottom-1 -right-2 w-8 h-8 bg-error rounded-lg flex items-center justify-center border-2 border-base-100 hover:bg-error/80 transition-colors"
+                        onClick={handleRemoveAvatar}
+                        title="Avatar entfernen"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-error-content" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    )}
+                  </>
+                )}
+                {/* Du badge - only if not canEdit (otherwise delete button is there) */}
+                {!canEdit && (
+                  <div className="absolute -bottom-1 -right-1 badge badge-primary badge-xs">Du</div>
+                )}
               </div>
-              <div className="font-bold text-xl text-center leading-tight">{displayName}</div>
+
+              {/* Name display or edit */}
+              {canEdit && isEditingName ? (
+                <div className="w-full max-w-[280px] mt-2">
+                  <div className="form-control">
+                    <input
+                      type="text"
+                      className="input input-bordered w-full"
+                      value={nameInput}
+                      onChange={(e) => setNameInput(e.target.value)}
+                      placeholder="Dein Name"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      className="btn btn-ghost btn-sm flex-1"
+                      onClick={() => {
+                        setNameInput(displayName);
+                        setIsEditingName(false);
+                      }}
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      className="btn btn-primary btn-sm flex-1"
+                      onClick={handleSaveName}
+                    >
+                      Speichern
+                    </button>
+                  </div>
+                </div>
+              ) : canEdit ? (
+                <div className="flex items-center justify-center w-full mt-2">
+                  <div className="w-8 h-8 invisible" />
+                  <span
+                    className="font-bold text-3xl text-center cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => setIsEditingName(true)}
+                  >
+                    {displayName}
+                  </span>
+                  <button
+                    className="btn btn-ghost btn-sm btn-circle ml-1"
+                    onClick={() => setIsEditingName(true)}
+                    title="Name bearbeiten"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <div className="font-bold text-xl text-center leading-tight mt-2">{displayName}</div>
+              )}
+
+              {avatarError && (
+                <div className="text-xs p-2 rounded mt-2 bg-warning/20 text-warning">
+                  {avatarError}
+                </div>
+              )}
             </div>
 
             {/* Large QR Code */}
@@ -188,9 +364,39 @@ export function UserProfileModal<TData = unknown>({
 
             {/* DID - Compact */}
             <div className="bg-base-200 rounded-lg p-2 mb-4">
-              <div className="text-xs text-base-content/50 mb-0.5">DID</div>
               <code className="text-xs break-all select-all block leading-tight">{did}</code>
             </div>
+
+            {/* Identity management - collapsible (only if canEdit) */}
+            {canEdit && onExportIdentity && onImportIdentity && onResetIdentity && (
+              <details className="collapse collapse-arrow bg-base-200 rounded-lg mb-2">
+                <summary className="collapse-title">
+                  Identität verwalten
+                </summary>
+                <div className="collapse-content">
+                  <div className="flex flex-col gap-2 pt-2">
+                    <button className="btn btn-outline btn-sm" onClick={onExportIdentity}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Exportieren
+                    </button>
+                    <button className="btn btn-outline btn-sm" onClick={onImportIdentity}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Importieren
+                    </button>
+                    <button className="btn btn-error btn-sm" onClick={onResetIdentity}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Zurücksetzen
+                    </button>
+                  </div>
+                </div>
+              </details>
+            )}
           </>
         ) : (
           <>
@@ -362,12 +568,6 @@ export function UserProfileModal<TData = unknown>({
           </div>
         )}
 
-        {/* Close button for own profile */}
-        {isOwnProfile && (
-          <button className="btn btn-ghost w-full" onClick={onClose}>
-            Schließen
-          </button>
-        )}
       </div>
       <div className="modal-backdrop" onClick={onClose}></div>
     </div>

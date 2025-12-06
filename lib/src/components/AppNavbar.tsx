@@ -27,7 +27,6 @@
 
 import { useState, useCallback, type ReactNode } from 'react';
 import { UserAvatar } from './UserAvatar';
-import { ProfileModal } from './ProfileModal';
 import { ParticipantsModal } from './ParticipantsModal';
 import { CollaboratorsModal } from './CollaboratorsModal';
 import { QRScannerModal } from './QRScannerModal';
@@ -35,10 +34,6 @@ import {
   WorkspaceSwitcher,
   type WorkspaceInfo,
 } from './WorkspaceSwitcher';
-import {
-  exportIdentityToFile,
-  importIdentityFromFile,
-} from '../utils/storage';
 import { useProfileUrl } from '../hooks/useProfileUrl';
 import type { BaseDocument } from '../schema/document';
 import type { UserDocument } from '../schema/userDocument';
@@ -66,23 +61,14 @@ export interface AppNavbarProps<TData = unknown> {
   /** Callback to create new workspace */
   onNewWorkspace: () => void;
 
-  /** Callback to update identity (name, avatar) */
-  onUpdateIdentity: (updates: { displayName?: string; avatarUrl?: string }) => void;
-
   /** Callback when user trusts another user (with optional userDocUrl for bidirectional trust) */
   onTrustUser: (trusteeDid: string, trusteeUserDocUrl?: string) => void;
-
-  /** Callback to reset identity */
-  onResetIdentity: () => void;
 
   /** Callback to toggle user visibility in views */
   onToggleUserVisibility?: (did: string) => void;
 
   /** Set of hidden user DIDs */
   hiddenUserDids?: Set<string>;
-
-  /** Initial display name for profile modal */
-  initialDisplayName?: string;
 
   /** Optional: Center content (e.g., module tabs) */
   children?: ReactNode;
@@ -102,9 +88,6 @@ export interface AppNavbarProps<TData = unknown> {
   /** User document for trust information (optional) */
   userDoc?: UserDocument | null;
 
-  /** User document URL for bidirectional trust sync (optional) */
-  userDocUrl?: string;
-
   /**
    * Profiles loaded from trusted users' UserDocuments (optional)
    * Used as primary source for avatar/name of verified friends
@@ -120,23 +103,18 @@ export function AppNavbar<TData = unknown>({
   workspaces,
   onSwitchWorkspace,
   onNewWorkspace,
-  onUpdateIdentity,
   onTrustUser,
-  onResetIdentity,
   onToggleUserVisibility,
   hiddenUserDids = new Set(),
-  initialDisplayName,
   children,
   appTitle,
   hideWorkspaceSwitcher = false,
   onShareLink,
   onShowToast,
   userDoc,
-  userDocUrl,
   trustedUserProfiles,
 }: AppNavbarProps<TData>) {
   // Modal states
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const [showParticipantsModal, setShowParticipantsModal] = useState(false);
   const [showCollaboratorsModal, setShowCollaboratorsModal] = useState(false);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
@@ -159,17 +137,6 @@ export function AppNavbar<TData = unknown>({
       onShowToast?.('Link in Zwischenablage kopiert!');
     }
   }, [onShareLink, onShowToast]);
-
-  const handleExportIdentity = useCallback(() => {
-    exportIdentityToFile();
-  }, []);
-
-  const handleImportIdentity = useCallback(() => {
-    importIdentityFromFile(
-      undefined,
-      (error) => onShowToast?.(error)
-    );
-  }, [onShowToast]);
 
   const handleToggleVisibility = useCallback((did: string) => {
     onToggleUserVisibility?.(did);
@@ -203,7 +170,7 @@ export function AppNavbar<TData = unknown>({
           <div className="flex items-center gap-2">
             <button
               className="w-11 h-11 rounded-full overflow-hidden cursor-pointer hover:ring-2 hover:ring-primary transition-all"
-              onClick={() => setShowProfileModal(true)}
+              onClick={() => openProfile(currentUserDid)}
               title="Profil"
             >
               <UserAvatar
@@ -212,7 +179,10 @@ export function AppNavbar<TData = unknown>({
                 size={44}
               />
             </button>
-            <span className="hidden lg:block font-medium max-w-[120px] truncate">
+            <span
+              className="hidden lg:block font-medium max-w-[120px] truncate cursor-pointer hover:text-primary transition-colors"
+              onClick={() => openProfile(currentUserDid)}
+            >
               {displayName}
             </span>
           </div>
@@ -234,7 +204,7 @@ export function AppNavbar<TData = unknown>({
               className="menu menu-sm dropdown-content bg-base-100 rounded-box z-[1] mt-6 w-52 p-2 shadow"
             >
               <li>
-                <a onClick={() => setShowProfileModal(true)}>
+                <a onClick={() => openProfile(currentUserDid)}>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-5 w-5"
@@ -354,20 +324,6 @@ export function AppNavbar<TData = unknown>({
       </div>
 
       {/* Integrated Modals */}
-      <ProfileModal
-        isOpen={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        currentUserDid={currentUserDid}
-        doc={doc}
-        userDoc={userDoc}
-        onUpdateIdentity={onUpdateIdentity}
-        onExportIdentity={handleExportIdentity}
-        onImportIdentity={handleImportIdentity}
-        onResetId={onResetIdentity}
-        initialDisplayName={initialDisplayName}
-        userDocUrl={userDocUrl}
-      />
-
       <ParticipantsModal
         isOpen={showParticipantsModal}
         onClose={() => setShowParticipantsModal(false)}

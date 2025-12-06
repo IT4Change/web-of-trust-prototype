@@ -7,7 +7,7 @@
  * - Managing the module-specific data within the unified document
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { DocHandle } from '@automerge/automerge-repo';
 import { MapModule } from 'map-app/modules';
 import type { UserIdentity } from 'narrative-ui';
@@ -20,6 +20,7 @@ interface MapModuleWrapperProps {
   docHandle: DocHandle<UnifiedDocument>;
   identity: UserIdentity;
   hiddenUserDids: Set<string>;
+  // TODO: profileActions should be passed from parent for unified profile handling
 }
 
 export function MapModuleWrapper({
@@ -28,6 +29,9 @@ export function MapModuleWrapper({
   identity,
   hiddenUserDids,
 }: MapModuleWrapperProps) {
+  // State for placing marker mode
+  const [isPlacingMarker, setIsPlacingMarker] = useState(false);
+
   // Initialize map data if missing (for existing documents)
   if (!doc.data.map && docHandle) {
     docHandle.change((d) => {
@@ -169,6 +173,8 @@ export function MapModuleWrapper({
           identities: doc.identities,
           data: mapData,
         }}
+        isPlacingMarker={isPlacingMarker}
+        setIsPlacingMarker={setIsPlacingMarker}
       />
     </div>
   );

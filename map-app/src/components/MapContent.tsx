@@ -9,8 +9,8 @@
  * It's designed to be embedded in both standalone MapView and unified-app MapModule.
  */
 
-import { useEffect, useRef, useState } from 'react';
-import { UserProfileModal, type ProfileAction, useProfileUrl } from 'narrative-ui';
+import { useEffect, useRef } from 'react';
+import { useProfileUrl } from 'narrative-ui';
 import type { UserLocation, MapDoc } from '../schema/map-data';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -32,6 +32,10 @@ export interface MapContentProps {
   getMyLocation: () => UserLocation | null;
   /** The document (for profile lookup) */
   doc: MapDoc;
+  /** Whether placing marker mode is active (controlled by parent) */
+  isPlacingMarker: boolean;
+  /** Callback to set placing marker mode */
+  setIsPlacingMarker: (value: boolean) => void;
 }
 
 export function MapContent({
@@ -40,22 +44,16 @@ export function MapContent({
   identities,
   hiddenUserDids = new Set(),
   onSetLocation,
-  onRemoveLocation,
   getMyLocation,
-  doc,
+  isPlacingMarker,
+  setIsPlacingMarker,
 }: MapContentProps) {
   const mapRef = useRef<L.Map | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
 
-  const [isPlacingMarker, setIsPlacingMarker] = useState(false);
-
   // URL-based profile support
-  const { profileDid, openProfile, closeProfile } = useProfileUrl();
-  const [selectedUserDid, setSelectedUserDid] = useState<string | null>(null);
-
-  // Sync URL profile with local state
-  const activeProfileDid = profileDid || selectedUserDid;
+  const { openProfile } = useProfileUrl();
 
   // Initialize map
   useEffect(() => {
@@ -125,9 +123,8 @@ export function MapContent({
           }),
         }).addTo(map);
 
-        // Click on marker opens profile modal
+        // Click on marker opens profile via URL
         marker.on('click', () => {
-          setSelectedUserDid(location.userDid);
           openProfile(location.userDid);
         });
 
@@ -155,78 +152,9 @@ export function MapContent({
       map.off('click', handleMapClick);
       map.getContainer().style.cursor = '';
     };
-  }, [isPlacingMarker, onSetLocation]);
+  }, [isPlacingMarker, onSetLocation, setIsPlacingMarker]);
 
   const myLocation = getMyLocation();
-  const isSelectedCurrentUser = activeProfileDid === currentUserDid;
-
-  // Handle closing the profile modal
-  const handleCloseProfile = () => {
-    setSelectedUserDid(null);
-    closeProfile();
-  };
-
-  // Custom actions for the profile modal (map-specific)
-  const customActions: ProfileAction[] = isSelectedCurrentUser
-    ? [
-        {
-          label: 'Update Location',
-          icon: (
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-              />
-            </svg>
-          ),
-          onClick: () => {
-            handleCloseProfile();
-            setIsPlacingMarker(true);
-          },
-          variant: 'primary',
-          ownProfileOnly: true,
-        },
-        {
-          label: 'Remove from Map',
-          icon: (
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-              />
-            </svg>
-          ),
-          onClick: () => {
-            onRemoveLocation();
-            handleCloseProfile();
-          },
-          variant: 'error',
-          ownProfileOnly: true,
-        },
-      ]
-    : [];
 
   return (
     <div className="w-full h-full relative">
@@ -240,7 +168,7 @@ export function MapContent({
       {/* Placing marker hint */}
       {isPlacingMarker && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[550] bg-primary text-primary-content px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
-          <span>Tap on the map to set your location</span>
+          <span>Tippe auf die Karte um deinen Standort zu setzen</span>
           <button
             className="btn btn-xs btn-ghost"
             onClick={() => setIsPlacingMarker(false)}
@@ -255,7 +183,7 @@ export function MapContent({
         <button
           className={`btn btn-circle btn-lg shadow-lg shadow-black/30 ${isPlacingMarker ? 'btn-secondary' : 'btn-primary'}`}
           onClick={() => setIsPlacingMarker(!isPlacingMarker)}
-          title={myLocation ? 'Update your location' : 'Add your location'}
+          title={myLocation ? 'Standort aktualisieren' : 'Standort hinzufügen'}
         >
           {isPlacingMarker ? (
             <svg
@@ -290,19 +218,6 @@ export function MapContent({
           )}
         </button>
       </div>
-
-      {/* Profile Modal - Opens when clicking on a marker or via URL */}
-      {activeProfileDid && (
-        <UserProfileModal
-          did={activeProfileDid}
-          isOpen={true}
-          onClose={handleCloseProfile}
-          doc={doc}
-          currentUserDid={currentUserDid}
-          customActions={customActions}
-          hideTrustActions={true}
-        />
-      )}
     </div>
   );
 }

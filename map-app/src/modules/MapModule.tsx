@@ -24,6 +24,10 @@ export interface MapModuleProps extends ModuleProps<MapData> {
 
   // Full document for profile modal
   doc: MapDoc;
+
+  // Placing marker mode (controlled by parent for profile actions)
+  isPlacingMarker: boolean;
+  setIsPlacingMarker: (value: boolean) => void;
 }
 
 export function MapModule({
@@ -34,6 +38,8 @@ export function MapModule({
   locations,
   hiddenUserDids = new Set(),
   doc,
+  isPlacingMarker,
+  setIsPlacingMarker,
 }: MapModuleProps) {
   return (
     <div className="w-full h-full">
@@ -46,6 +52,8 @@ export function MapModule({
         onRemoveLocation={onRemoveLocation}
         getMyLocation={getMyLocation}
         doc={doc}
+        isPlacingMarker={isPlacingMarker}
+        setIsPlacingMarker={setIsPlacingMarker}
       />
     </div>
   );

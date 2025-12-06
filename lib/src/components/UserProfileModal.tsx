@@ -285,8 +285,8 @@ export function UserProfileModal<TData = unknown>({
                     )}
                   </>
                 )}
-                {/* Du badge - only if not canEdit (otherwise delete button is there) */}
-                {!canEdit && (
+                {/* Du badge - only for own profile when not in edit mode */}
+                {isOwnProfile && !canEdit && (
                   <div className="absolute -bottom-1 -right-1 badge badge-primary badge-xs">Du</div>
                 )}
               </div>

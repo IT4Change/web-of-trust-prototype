@@ -301,6 +301,7 @@ function App() {
       repo={repo}
       createEmptyDocument={createEmpty${pascalName}Doc}
       storagePrefix="${camelName}"
+      enableUserDocument
     >
       {(props) => <MainView {...props} />}
     </AppShell>
@@ -312,22 +313,12 @@ export default App;
 fs.writeFileSync(path.join(appDir, 'src', 'App.tsx'), appTsx);
 
 // Create src/components/MainView.tsx
-const mainViewTsx = `import { useState, useEffect, useCallback } from 'react';
-import type { DocumentId } from '@automerge/automerge-repo';
+const mainViewTsx = `import type { DocHandle, AutomergeUrl, DocumentId } from '@automerge/automerge-repo';
 import { useDocHandle, useDocument } from '@automerge/automerge-repo-react-hooks';
-import {
-  AppNavbar,
-  ProfileModal,
-  CollaboratorsModal,
-  QRScannerModal,
-  addTrustAttestation,
-  loadWorkspaceList,
-  saveWorkspaceList,
-  upsertWorkspace,
-  type WorkspaceInfo,
-} from 'narrative-ui';
+import { AppLayout, type AppContextValue, type UserDocument } from 'narrative-ui';
 import type { ${pascalName}Doc } from '../schema';
-import { exposeDocToConsole } from '../debug';
+// Debug extensions are auto-initialized via main.tsx import
+import '../debug';
 
 interface MainViewProps {
   documentId: DocumentId;
@@ -336,149 +327,44 @@ interface MainViewProps {
   publicKey?: string;
   displayName?: string;
   onResetIdentity: () => void;
-  onNewDocument: () => void;
+  onNewDocument: (name?: string, avatarDataUrl?: string) => void;
+  // User Document (from AppShell when enableUserDocument is true)
+  userDocId?: string;
+  userDocHandle?: DocHandle<UserDocument>;
 }
-
-const WORKSPACE_STORAGE_KEY = '${camelName}Workspaces';
 
 export function MainView({
   documentId,
   currentUserDid,
-  displayName,
   onResetIdentity,
   onNewDocument,
+  userDocId,
+  userDocHandle,
 }: MainViewProps) {
+  // Load UserDocument for trust/verification features
+  const [userDoc] = useDocument<UserDocument>(userDocId as AutomergeUrl | undefined);
+
   // In automerge-repo v2.x, useDocHandle handles async loading
   const docHandle = useDocHandle<${pascalName}Doc>(documentId);
   const [doc] = useDocument<${pascalName}Doc>(documentId);
 
-  // UI State
-  const [showIdentityModal, setShowIdentityModal] = useState(false);
-  const [showFriendsModal, setShowFriendsModal] = useState(false);
-  const [showVerifyModal, setShowVerifyModal] = useState(false);
-  const [hiddenUserDids, setHiddenUserDids] = useState<Set<string>>(new Set());
-  const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>(() =>
-    loadWorkspaceList(WORKSPACE_STORAGE_KEY)
-  );
-
   const logoUrl = \`\${import.meta.env.BASE_URL}logo.svg\`;
 
-  // Expose doc to console for debugging
-  useEffect(() => {
-    exposeDocToConsole(doc ?? null);
-  }, [doc]);
-
-  // Track current workspace
-  useEffect(() => {
-    if (!doc) return;
-
-    const workspaceInfo: WorkspaceInfo = {
-      id: documentId.toString(),
-      name: doc.context?.name || '${title}',
-      avatar: doc.context?.avatar,
-      lastAccessed: Date.now(),
-    };
-
-    setWorkspaces((prev) => {
-      const updated = upsertWorkspace(prev, workspaceInfo);
-      saveWorkspaceList(updated, WORKSPACE_STORAGE_KEY);
-      return updated;
-    });
-  }, [documentId, doc?.context?.name, doc?.context?.avatar]);
-
-  const currentWorkspace: WorkspaceInfo | null = doc
-    ? {
-        id: documentId.toString(),
-        name: doc.context?.name || '${title}',
-        avatar: doc.context?.avatar,
-        lastAccessed: Date.now(),
-      }
-    : null;
-
-  const handleSwitchWorkspace = useCallback((workspaceId: string) => {
-    window.location.hash = \`doc=\${workspaceId}\`;
-  }, []);
-
-  const toggleUserVisibility = (did: string) => {
-    setHiddenUserDids((prev) => {
-      const next = new Set(prev);
-      if (next.has(did)) {
-        next.delete(did);
-      } else {
-        next.add(did);
-      }
-      return next;
-    });
-  };
-
-  const handleTrustUser = (trusteeDid: string) => {
+  // Update identity in the document
+  const updateIdentity = (did: string, updates: { displayName?: string; avatarUrl?: string }) => {
     if (!docHandle) return;
     docHandle.change((d) => {
-      addTrustAttestation(d, currentUserDid, trusteeDid, 'verified', 'in-person');
-      d.lastModified = Date.now();
-    });
-  };
-
-  const updateIdentity = (updates: { displayName?: string; avatarUrl?: string }) => {
-    if (!docHandle) return;
-    docHandle.change((d) => {
-      if (!d.identities[currentUserDid]) {
-        d.identities[currentUserDid] = {};
+      if (!d.identities[did]) {
+        d.identities[did] = {};
       }
       if (updates.displayName !== undefined) {
-        d.identities[currentUserDid].displayName = updates.displayName;
+        d.identities[did].displayName = updates.displayName;
       }
       if (updates.avatarUrl !== undefined) {
-        d.identities[currentUserDid].avatarUrl = updates.avatarUrl;
+        d.identities[did].avatarUrl = updates.avatarUrl;
       }
       d.lastModified = Date.now();
     });
-  };
-
-  const handleExportIdentity = () => {
-    const savedIdentity = localStorage.getItem('narrativeIdentity');
-    if (!savedIdentity) return;
-
-    const blob = new Blob([savedIdentity], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = \`${camelName}-identity-\${Date.now()}.json\`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleImportIdentity = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const content = event.target?.result as string;
-          const identity = JSON.parse(content);
-          if (identity.did) {
-            localStorage.setItem('narrativeIdentity', content);
-            window.location.reload();
-          }
-        } catch {
-          alert('Invalid identity file');
-        }
-      };
-      reader.readAsText(file);
-    };
-    input.click();
-  };
-
-  const handleShareClick = () => {
-    const url = window.location.href;
-    navigator.clipboard.writeText(url);
   };
 
   if (!doc) {
@@ -490,72 +376,45 @@ export function MainView({
   }
 
   return (
-    <div className="min-h-screen bg-base-200 flex flex-col">
-      {/* Shared Navbar */}
-      <AppNavbar
-        currentUserDid={currentUserDid}
-        identities={doc.identities}
-        logoUrl={logoUrl}
-        currentWorkspace={currentWorkspace}
-        workspaces={workspaces}
-        onSwitchWorkspace={handleSwitchWorkspace}
-        onNewWorkspace={onNewDocument}
-        onShowProfile={() => setShowIdentityModal(true)}
-        onShowCollaborators={() => setShowFriendsModal(true)}
-        onShowVerify={() => setShowVerifyModal(true)}
-        onShareLink={handleShareClick}
-      />
-
-      {/* Main Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="container mx-auto p-4 max-w-4xl">
-          <div className="card bg-base-100 shadow-xl">
-            <div className="card-body">
-              <h2 className="card-title">Welcome to ${title}!</h2>
-              <p>
-                Your new Narrative app is ready. Edit{' '}
-                <code className="bg-base-200 px-1 rounded">src/components/MainView.tsx</code>{' '}
-                to get started.
-              </p>
-              <p className="text-sm opacity-70">
-                Document: {documentId.slice(0, 20)}...
-              </p>
+    <AppLayout
+      doc={doc}
+      docHandle={docHandle}
+      documentId={documentId.toString()}
+      currentUserDid={currentUserDid}
+      appTitle="${title}"
+      workspaceName="${title}"
+      hideWorkspaceSwitcher={false}
+      logoUrl={logoUrl}
+      onResetIdentity={onResetIdentity}
+      onCreateWorkspace={onNewDocument}
+      onUpdateIdentityInDoc={(updates) => updateIdentity(currentUserDid, updates)}
+      userDocHandle={userDocHandle}
+      userDoc={userDoc}
+      userDocUrl={userDocHandle?.url}
+    >
+      {(_ctx: AppContextValue) => (
+        <>
+          {/* Main Content - customize this for your app */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="container mx-auto p-4 max-w-4xl">
+              <div className="card bg-base-100 shadow-xl">
+                <div className="card-body">
+                  <h2 className="card-title">Welcome to ${title}!</h2>
+                  <p>
+                    Your new Narrative app is ready. Edit{' '}
+                    <code className="bg-base-200 px-1 rounded">src/components/MainView.tsx</code>{' '}
+                    to get started.
+                  </p>
+                  <p className="text-sm opacity-70">
+                    Document: {documentId.toString().slice(0, 20)}...
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Modals */}
-      <ProfileModal
-        isOpen={showIdentityModal}
-        onClose={() => setShowIdentityModal(false)}
-        currentUserDid={currentUserDid}
-        doc={doc}
-        onUpdateIdentity={updateIdentity}
-        onExportIdentity={handleExportIdentity}
-        onImportIdentity={handleImportIdentity}
-        onResetId={onResetIdentity}
-        initialDisplayName={displayName}
-      />
-
-      <CollaboratorsModal
-        isOpen={showFriendsModal}
-        onClose={() => setShowFriendsModal(false)}
-        doc={doc}
-        currentUserDid={currentUserDid}
-        hiddenUserDids={hiddenUserDids}
-        onToggleUserVisibility={toggleUserVisibility}
-        onTrustUser={handleTrustUser}
-      />
-
-      <QRScannerModal
-        isOpen={showVerifyModal}
-        onClose={() => setShowVerifyModal(false)}
-        currentUserDid={currentUserDid}
-        doc={doc}
-        onTrustUser={handleTrustUser}
-      />
-    </div>
+        </>
+      )}
+    </AppLayout>
   );
 }
 `;

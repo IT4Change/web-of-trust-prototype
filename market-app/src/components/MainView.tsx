@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import type { DocumentId } from '@automerge/automerge-repo';
-import { AppLayout, type AppContextValue } from 'narrative-ui';
+import type { DocHandle, AutomergeUrl, DocumentId } from '@automerge/automerge-repo';
+import { useDocument } from '@automerge/automerge-repo-react-hooks';
+import { AppLayout, type AppContextValue, type UserDocument } from 'narrative-ui';
 import { useMarket } from '../hooks/useMarket';
 import type { ListingType, CategoryId } from '../schema';
 import { CATEGORIES } from '../schema';
@@ -17,6 +18,9 @@ interface MainViewProps {
   displayName?: string;
   onResetIdentity: () => void;
   onNewDocument: (name?: string, avatarDataUrl?: string) => void;
+  // User Document (from AppShell when enableUserDocument is true)
+  userDocId?: string;
+  userDocHandle?: DocHandle<UserDocument>;
 }
 
 type FilterType = 'all' | 'offer' | 'need';
@@ -27,7 +31,12 @@ export function MainView({
   currentUserDid,
   onResetIdentity,
   onNewDocument,
+  userDocId,
+  userDocHandle,
 }: MainViewProps) {
+  // Load UserDocument for trust/verification features
+  const [userDoc] = useDocument<UserDocument>(userDocId as AutomergeUrl | undefined);
+
   // Hook now handles docHandle internally using useDocHandle
   const {
     doc,
@@ -97,6 +106,9 @@ export function MainView({
       onResetIdentity={onResetIdentity}
       onCreateWorkspace={onNewDocument}
       onUpdateIdentityInDoc={(updates) => updateIdentity(currentUserDid, updates)}
+      userDocHandle={userDocHandle}
+      userDoc={userDoc}
+      userDocUrl={userDocHandle?.url}
     >
       {(ctx: AppContextValue) => {
         // Filtered listings

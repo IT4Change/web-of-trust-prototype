@@ -1,5 +1,7 @@
+import type { DocHandle, AutomergeUrl } from '@automerge/automerge-repo';
 import { DocumentId } from '@automerge/automerge-repo';
-import { AppLayout, type AppContextValue } from 'narrative-ui';
+import { useDocument } from '@automerge/automerge-repo-react-hooks';
+import { AppLayout, type AppContextValue, type UserDocument } from 'narrative-ui';
 import { useMapDocument } from '../hooks/useMapDocument';
 import { MapContent } from './MapContent';
 
@@ -11,6 +13,9 @@ interface MapViewProps {
   displayName?: string;
   onResetIdentity: () => void;
   onNewDocument: (name?: string, avatarDataUrl?: string) => void;
+  // User Document (from AppShell when enableUserDocument is true)
+  userDocId?: string;
+  userDocHandle?: DocHandle<UserDocument>;
 }
 
 /**
@@ -25,6 +30,8 @@ export function MapView({
   displayName,
   onResetIdentity,
   onNewDocument,
+  userDocId,
+  userDocHandle,
 }: MapViewProps) {
   // Hook now handles docHandle internally using useDocHandle
   const mapData = useMapDocument(
@@ -34,6 +41,9 @@ export function MapView({
     publicKey,
     displayName
   );
+
+  // Load UserDocument for trust/verification features
+  const [userDoc] = useDocument<UserDocument>(userDocId as AutomergeUrl | undefined);
 
   const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
 
@@ -50,6 +60,9 @@ export function MapView({
       onResetIdentity={onResetIdentity}
       onCreateWorkspace={onNewDocument}
       onUpdateIdentityInDoc={mapData?.updateIdentity}
+      userDocHandle={userDocHandle}
+      userDoc={userDoc}
+      userDocUrl={userDocHandle?.url}
     >
       {(ctx: AppContextValue) => (
         <div className="flex-1 relative overflow-hidden">

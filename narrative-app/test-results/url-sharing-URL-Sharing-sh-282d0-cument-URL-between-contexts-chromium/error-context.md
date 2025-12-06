@@ -1,0 +1,56 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - button "Narrative Narrative Board" [ref=e7] [cursor=pointer]:
+      - img "Narrative" [ref=e8]
+      - generic [ref=e9]: Narrative Board
+      - img [ref=e10]
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - button "Profil" [ref=e14] [cursor=pointer]:
+          - img [ref=e16]
+        - generic [ref=e21]: User-7pbnnb
+      - button [ref=e23] [cursor=pointer]:
+        - img [ref=e24]
+  - generic [ref=e26]:
+    - generic [ref=e27]:
+      - generic [ref=e29]:
+        - button "Alle" [ref=e31] [cursor=pointer]:
+          - img [ref=e32]
+          - generic [ref=e34]: Alle
+        - generic [ref=e36]:
+          - generic [ref=e38]: Sortieren nach
+          - combobox "Sortieren nach" [ref=e39] [cursor=pointer]:
+            - option "Neuster Vote"
+            - option "Anzahl Votes"
+            - option "Zustimmung"
+            - option "Neueste Annahme" [selected]
+      - generic [ref=e42]:
+        - generic [ref=e43]:
+          - paragraph [ref=e44]: Shared document test
+          - button "Edit" [ref=e45] [cursor=pointer]
+        - generic [ref=e48]: No votes yet
+        - generic [ref=e49]:
+          - generic [ref=e50]:
+            - button "🟢 0" [ref=e51] [cursor=pointer]:
+              - generic [ref=e53]: 🟢
+              - text: "0"
+            - button "🟡 0" [ref=e54] [cursor=pointer]:
+              - generic [ref=e56]: 🟡
+              - text: "0"
+            - button "🔴 0" [ref=e57] [cursor=pointer]:
+              - generic [ref=e59]: 🔴
+              - text: "0"
+          - generic [ref=e60]: 0 votes
+          - button "Details ▼" [ref=e62] [cursor=pointer]:
+            - text: Details
+            - generic [ref=e63]: ▼
+    - button "New Assumption" [ref=e64] [cursor=pointer]:
+      - img [ref=e65]
+      - generic [ref=e67]: New Assumption
+    - button "Import" [ref=e68] [cursor=pointer]:
+      - img [ref=e69]
+      - text: Import
+```

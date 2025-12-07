@@ -60,7 +60,6 @@ export function QRScannerModal<TData = unknown>({
     }
 
     let cleanup: (() => void) | undefined;
-    let pollingInterval: ReturnType<typeof setInterval> | undefined;
 
     const loadAndVerify = async () => {
       setSignatureStatus('loading');
@@ -68,24 +67,20 @@ export function QRScannerModal<TData = unknown>({
         // Load the UserDocument
         const handle = await repo.find<UserDocument>(scannedUserDocUrl as AutomergeUrl);
 
-        // Track if we've successfully loaded the profile
-        let profileLoaded = false;
-
         // Function to update profile from document
         const updateFromDoc = async (userDoc: UserDocument | undefined) => {
           if (!userDoc || !userDoc.profile) {
-            // Document not yet available - stay in waiting state
-            console.log('[QRScannerModal] UserDocument not yet available, waiting for network sync...');
-            setSignatureStatus('waiting');
+            console.log('[QRScannerModal] UserDocument has no profile');
+            setSignatureStatus('missing');
             setLoadedProfile(null);
-            return false; // Not loaded yet
+            return;
           }
 
           // Verify the DID matches
           if (userDoc.did !== scannedDid) {
             console.warn('[QRScannerModal] DID mismatch in UserDocument');
             setSignatureStatus('invalid');
-            return true; // Loaded but invalid
+            return;
           }
 
           // Store the profile data from UserDocument
@@ -98,7 +93,7 @@ export function QRScannerModal<TData = unknown>({
           // Check if profile has a signature
           if (!userDoc.profile.signature) {
             setSignatureStatus('missing');
-            return true; // Loaded but no signature
+            return;
           }
 
           // Verify the profile signature
@@ -107,40 +102,28 @@ export function QRScannerModal<TData = unknown>({
           const result = await verifyProfileSignature(userDoc.profile, publicKeyBase64);
 
           setSignatureStatus(result.valid ? 'valid' : 'invalid');
-          return true; // Loaded
         };
 
-        // Subscribe to changes for reactive updates (for changes AFTER initial load)
+        // Show waiting state while we wait for the document
+        setSignatureStatus('waiting');
+
+        // Wait for document to arrive from network (proper automerge-repo API!)
+        console.log('[QRScannerModal] Waiting for document from network...');
+        await handle.whenReady();
+        console.log('[QRScannerModal] Document ready!');
+
+        // Now safely access the document
+        const userDoc = handle.doc();
+        await updateFromDoc(userDoc);
+
+        // Subscribe to future changes
         const onChange = () => {
           updateFromDoc(handle.doc());
         };
         handle.on('change', onChange);
 
-        // Try initial load
-        profileLoaded = await updateFromDoc(handle.doc());
-
-        // If not loaded, poll every 500ms until document arrives from network
-        // The 'change' event only fires for changes, not for initial network sync
-        if (!profileLoaded) {
-          console.log('[QRScannerModal] Starting polling for network document...');
-          pollingInterval = setInterval(async () => {
-            const doc = handle.doc();
-            if (doc?.profile) {
-              console.log('[QRScannerModal] Document arrived from network!');
-              profileLoaded = await updateFromDoc(doc);
-              if (profileLoaded && pollingInterval) {
-                clearInterval(pollingInterval);
-                pollingInterval = undefined;
-              }
-            }
-          }, 500);
-        }
-
         cleanup = () => {
           handle.off('change', onChange);
-          if (pollingInterval) {
-            clearInterval(pollingInterval);
-          }
         };
       } catch (error) {
         console.error('[QRScannerModal] Failed to load/verify UserDocument:', error);

@@ -45,7 +45,7 @@ jobs:
           cp -r narrative-app/dist _site/narrative
           cp -r map-app/dist _site/map
           cp -r market-app/dist _site/market
-          cp -r unified-app/dist _site/
+          cp -r unified-app/dist _site/unified
           cp -r dank-app/dist _site/dank
 
           # Create root index.html with app selector

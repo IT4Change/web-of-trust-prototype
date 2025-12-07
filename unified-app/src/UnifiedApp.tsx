@@ -5,18 +5,17 @@
  */
 
 import { useState } from 'react';
-import type { DocHandle, AutomergeUrl } from '@automerge/automerge-repo';
+import type { DocHandle, AutomergeUrl, DocumentId } from '@automerge/automerge-repo';
 import { useDocHandle, useDocument } from '@automerge/automerge-repo-react-hooks';
-import type { DocumentId } from '@automerge/automerge-repo';
-import { AppLayout, type AppContextValue, type UserDocument } from 'narrative-ui';
+import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState } from 'narrative-ui';
 import { UnifiedDocument, AVAILABLE_MODULES, ModuleId } from './types';
 import { ModuleSwitcher } from './components/ModuleSwitcher';
 import { NarrativeModuleWrapper } from './components/NarrativeModuleWrapper';
 import { MarketModuleWrapper } from './components/MarketModuleWrapper';
 import { MapModuleWrapper } from './components/MapModuleWrapper';
 
-interface UnifiedAppProps {
-  documentId: DocumentId;
+export interface UnifiedAppProps {
+  documentId: DocumentId | null;
   currentUserDid: string;
   privateKey?: string;
   publicKey?: string;
@@ -26,6 +25,8 @@ interface UnifiedAppProps {
   // User Document (from AppShell when enableUserDocument is true)
   userDocId?: string;
   userDocHandle?: DocHandle<UserDocument>;
+  // Workspace loading state (from AppShell when document is still loading)
+  workspaceLoading?: WorkspaceLoadingState;
   // Debug Dashboard toggle (from AppShell)
   onToggleDebugDashboard: () => void;
 }
@@ -40,13 +41,15 @@ export function UnifiedApp({
   onNewDocument,
   userDocId,
   userDocHandle,
+  workspaceLoading,
   onToggleDebugDashboard,
 }: UnifiedAppProps) {
   // In automerge-repo v2.x, use useDocHandle hook instead of repo.find()
-  const docHandle = useDocHandle<UnifiedDocument>(documentId);
+  // Handle null docId case - hooks must be called unconditionally
+  const docHandle = useDocHandle<UnifiedDocument>(documentId ?? undefined);
 
   // Load documents reactively
-  const [doc] = useDocument<UnifiedDocument>(documentId);
+  const [doc] = useDocument<UnifiedDocument>(documentId ?? undefined);
   const [userDoc] = useDocument<UserDocument>(userDocId as AutomergeUrl | undefined);
 
   // App-specific UI state
@@ -88,7 +91,7 @@ export function UnifiedApp({
     <AppLayout
       doc={doc}
       docHandle={docHandle}
-      documentId={documentId.toString()}
+      documentId={documentId?.toString() ?? ''}
       currentUserDid={currentUserDid}
       appTitle="Narrative"
       workspaceName={doc?.context?.name || 'Workspace'}
@@ -102,6 +105,7 @@ export function UnifiedApp({
       userDoc={userDoc}
       userDocUrl={userDocHandle?.url}
       onToggleDebugDashboard={onToggleDebugDashboard}
+      workspaceLoading={workspaceLoading}
     >
       {(ctx: AppContextValue) => (
         <>

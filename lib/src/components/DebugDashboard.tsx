@@ -381,7 +381,7 @@ export function DebugDashboard({
   }
 
   return (
-    <div className={`fixed inset-0 bg-black/80 z-[700] overflow-auto ${className}`}>
+    <div className={`fixed inset-0 bg-black/80 z-[1200] overflow-auto ${className}`}>
       <div className="min-h-screen p-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 bg-base-200 p-4 rounded-lg sticky top-0 z-10">

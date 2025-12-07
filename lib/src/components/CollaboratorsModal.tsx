@@ -293,8 +293,8 @@ export function CollaboratorsModal<TData = unknown>({
               trustedUserProfiles={trustedUserProfiles}
               height={350}
               onNodeClick={onUserClick}
-              showLegend={true}
               showStats={false}
+              loadSecondDegree={true}
             />
             <p className="text-xs text-base-content/50 text-center mt-2">
               Klicke auf einen Knoten um das Profil zu öffnen

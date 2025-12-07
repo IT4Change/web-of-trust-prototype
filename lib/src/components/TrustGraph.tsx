@@ -6,6 +6,8 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useRepo } from '@automerge/automerge-repo-react-hooks';
+import type { AutomergeUrl } from '@automerge/automerge-repo';
 import type { UserDocument } from '../schema/userDocument';
 import type { TrustAttestation } from '../schema/identity';
 import type { TrustedUserProfile } from '../hooks/useAppContext';
@@ -42,6 +44,10 @@ interface TrustEdge {
   target: string;
   level: TrustAttestation['level'];
   bidirectional: boolean;
+  /** Whether this is a 2nd-degree connection (friend of friend) */
+  isSecondDegree: boolean;
+  /** Whether this edge originates from the current user (outgoing trust) */
+  isOutgoing?: boolean;
 }
 
 export interface TrustGraphProps {
@@ -57,10 +63,10 @@ export interface TrustGraphProps {
   height?: number;
   /** Callback when a node is clicked */
   onNodeClick?: (did: string) => void;
-  /** Whether to show the legend (default: true) */
-  showLegend?: boolean;
   /** Whether to show stats (default: true) */
   showStats?: boolean;
+  /** Whether to load 2nd-degree connections (default: false) */
+  loadSecondDegree?: boolean;
 }
 
 /**
@@ -130,17 +136,20 @@ function buildGraph(
       });
     }
 
-    // Add edge
+    // Add edge (direct connection to current user - outgoing trust)
     const edgeKey = [userDoc.did, trusteeDid].sort().join('->');
     const existing = edgesMap.get(edgeKey);
     if (existing) {
       existing.bidirectional = true;
+      existing.isOutgoing = undefined; // Bidirectional, no direction preference
     } else {
       edgesMap.set(edgeKey, {
         source: userDoc.did,
         target: trusteeDid,
         level: attestation.level,
         bidirectional: false,
+        isSecondDegree: false,
+        isOutgoing: true, // Current user trusts this person
       });
     }
   }
@@ -162,17 +171,20 @@ function buildGraph(
       });
     }
 
-    // Add edge
+    // Add edge (direct connection to current user - incoming trust)
     const edgeKey = [trusterDid, userDoc.did].sort().join('->');
     const existing = edgesMap.get(edgeKey);
     if (existing) {
       existing.bidirectional = true;
+      existing.isOutgoing = undefined; // Bidirectional, no direction preference
     } else {
       edgesMap.set(edgeKey, {
         source: trusterDid,
         target: userDoc.did,
         level: attestation.level,
         bidirectional: false,
+        isSecondDegree: false,
+        isOutgoing: false, // Someone trusts the current user (incoming)
       });
     }
   }
@@ -199,7 +211,7 @@ function buildGraph(
         });
       }
 
-      // Add edge if both nodes exist
+      // Add edge if both nodes exist (2nd-degree connection)
       if (nodesMap.has(did) && nodesMap.has(trusteeDid)) {
         const edgeKey = [did, trusteeDid].sort().join('->');
         const existing = edgesMap.get(edgeKey);
@@ -214,6 +226,7 @@ function buildGraph(
             target: trusteeDid,
             level: attestation.level,
             bidirectional: false,
+            isSecondDegree: true,
           });
         }
       }
@@ -239,7 +252,7 @@ function buildGraph(
         });
       }
 
-      // Add edge if both nodes exist (direction: truster -> did)
+      // Add edge if both nodes exist (direction: truster -> did, 2nd-degree)
       if (nodesMap.has(trusterDid) && nodesMap.has(did)) {
         const edgeKey = [trusterDid, did].sort().join('->');
         const existing = edgesMap.get(edgeKey);
@@ -254,6 +267,7 @@ function buildGraph(
             target: did,
             level: attestation.level,
             bidirectional: false,
+            isSecondDegree: true,
           });
         }
       }
@@ -376,18 +390,24 @@ function simulateForces(
 
 export function TrustGraph({
   userDoc,
-  externalDocs = new Map(),
+  externalDocs: providedExternalDocs,
   trustedUserProfiles = {},
   width = '100%',
   height = 400,
   onNodeClick,
-  showLegend = true,
   showStats = true,
+  loadSecondDegree = false,
 }: TrustGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height });
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+
+  // State for dynamically loaded external docs (when loadSecondDegree is true)
+  const [loadedExternalDocs, setLoadedExternalDocs] = useState<Map<string, UserDocument>>(new Map());
+
+  // Get repo for loading UserDocuments
+  const repo = useRepo();
 
   // Measure SVG container
   useEffect(() => {
@@ -408,6 +428,91 @@ export function TrustGraph({
     return () => window.removeEventListener('resize', measure);
   }, [width, height]);
 
+  // Load external UserDocuments for 2nd-degree connections
+  // Track which DIDs we've already attempted to load to avoid duplicate requests
+  const loadedDidsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!loadSecondDegree || !repo || !userDoc) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadExternalDocs = async () => {
+      const docsToLoad: Array<{ did: string; url: string }> = [];
+
+      // Collect URLs from trust relationships (skip already loaded)
+      for (const [trusteeDid, attestation] of Object.entries(userDoc.trustGiven || {})) {
+        if (attestation.trusteeUserDocUrl && !loadedDidsRef.current.has(trusteeDid)) {
+          docsToLoad.push({ did: trusteeDid, url: attestation.trusteeUserDocUrl });
+        }
+      }
+
+      for (const [trusterDid, attestation] of Object.entries(userDoc.trustReceived || {})) {
+        if (attestation.trusterUserDocUrl && !loadedDidsRef.current.has(trusterDid)) {
+          docsToLoad.push({ did: trusterDid, url: attestation.trusterUserDocUrl });
+        }
+      }
+
+      if (docsToLoad.length === 0) return;
+
+      // Mark as loading to prevent duplicate requests
+      for (const { did } of docsToLoad) {
+        loadedDidsRef.current.add(did);
+      }
+
+      // Load all documents in parallel
+      const loadPromises = docsToLoad.map(async ({ did, url }) => {
+        try {
+          const handle = await repo.find<UserDocument>(url as AutomergeUrl);
+          const doc = handle.doc();
+          if (doc) {
+            return { did, doc };
+          }
+        } catch (err) {
+          console.warn(`Failed to load UserDoc for ${did}:`, err);
+          // Remove from loaded set so we can retry later
+          loadedDidsRef.current.delete(did);
+        }
+        return null;
+      });
+
+      const results = await Promise.all(loadPromises);
+
+      // Only update state if still mounted
+      if (!isMounted) return;
+
+      // Update state with loaded docs
+      setLoadedExternalDocs(prev => {
+        const next = new Map(prev);
+        for (const result of results) {
+          if (result) {
+            next.set(result.did, result.doc);
+          }
+        }
+        return next;
+      });
+    };
+
+    loadExternalDocs();
+
+    // Cleanup on unmount
+    return () => {
+      isMounted = false;
+      loadedDidsRef.current.clear();
+      setLoadedExternalDocs(new Map());
+    };
+  }, [loadSecondDegree, repo, userDoc, userDoc?.trustGiven, userDoc?.trustReceived]);
+
+  // Combine provided and loaded external docs
+  const externalDocs = useMemo(() => {
+    if (providedExternalDocs && providedExternalDocs.size > 0) {
+      return providedExternalDocs;
+    }
+    return loadedExternalDocs;
+  }, [providedExternalDocs, loadedExternalDocs]);
+
   // Build and layout graph
   const { nodes, edges } = useMemo(() => {
     const graph = buildGraph(userDoc, externalDocs, trustedUserProfiles);
@@ -426,9 +531,32 @@ export function TrustGraph({
     onNodeClick?.(did);
   }, [onNodeClick]);
 
-  // Get edge color based on level
+  // Get edge color based on direction and degree
+  // Bidirectional = green, Outgoing (I trust) = blue, Incoming (trusts me) = yellow/amber
   const getEdgeColor = (edge: TrustEdge) => {
-    return edge.level === 'verified' ? '#22c55e' : '#f59e0b'; // green vs amber
+    // 2nd-degree connections are always gray
+    if (edge.isSecondDegree) return '#9ca3af'; // gray-400
+    // Bidirectional trust = green (mutual)
+    if (edge.bidirectional) return '#22c55e'; // green-500
+    // Outgoing trust (I trust someone) = blue
+    if (edge.isOutgoing) return '#3b82f6'; // blue-500
+    // Incoming trust (someone trusts me) = yellow/amber
+    return '#f59e0b'; // amber-500
+  };
+
+  // Get marker ID based on edge type
+  const getMarkerId = (edge: TrustEdge) => {
+    if (edge.isSecondDegree) return 'arrowhead-gray';
+    if (edge.bidirectional) return 'arrowhead-green';
+    if (edge.isOutgoing) return 'arrowhead-blue';
+    return 'arrowhead-amber';
+  };
+
+  const getMarkerIdReverse = (edge: TrustEdge) => {
+    if (edge.isSecondDegree) return 'arrowhead-gray-reverse';
+    if (edge.bidirectional) return 'arrowhead-green-reverse';
+    if (edge.isOutgoing) return 'arrowhead-blue-reverse';
+    return 'arrowhead-amber-reverse';
   };
 
   if (!userDoc) {
@@ -447,39 +575,24 @@ export function TrustGraph({
     );
   }
 
+  // Count edge types for stats
+  const directEdges = edges.filter(e => !e.isSecondDegree);
+  const secondDegreeEdges = edges.filter(e => e.isSecondDegree);
+
   return (
     <div className="relative">
-      {/* Compact Legend - only line types */}
-      {showLegend && (
-      <div className="absolute top-2 right-2 bg-base-300/90 rounded-lg px-2 py-1.5 text-xs z-10 flex gap-3">
-        <div className="flex items-center gap-1">
-          <div className="w-4 h-0.5 bg-green-500" />
-          <span>Verified</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="w-4 h-0.5 bg-amber-500" />
-          <span>Endorsed</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <svg width="12" height="8" className="text-base-content/50">
-            <line x1="4" y1="4" x2="8" y2="4" stroke="currentColor" strokeWidth="1.5" />
-            <polygon points="0,4 4,2 4,6" fill="currentColor" />
-            <polygon points="12,4 8,2 8,6" fill="currentColor" />
-          </svg>
-          <span>Gegenseitig</span>
-        </div>
-      </div>
-      )}
-
       {/* Stats */}
       {showStats && (
       <div className="absolute top-2 left-2 bg-base-300/90 rounded-lg p-2 text-xs z-10">
         <div><span className="text-gray-500">Knoten:</span> {nodes.length}</div>
-        <div><span className="text-gray-500">Verbindungen:</span> {edges.length}</div>
+        <div><span className="text-gray-500">Direkt:</span> {directEdges.length}</div>
         <div>
           <span className="text-gray-500">Gegenseitig:</span>{' '}
-          {edges.filter(e => e.bidirectional).length}
+          {directEdges.filter(e => e.bidirectional).length}
         </div>
+        {secondDegreeEdges.length > 0 && (
+          <div><span className="text-gray-500">2. Grad:</span> {secondDegreeEdges.length}</div>
+        )}
       </div>
       )}
 
@@ -490,47 +603,87 @@ export function TrustGraph({
         className="bg-base-300 rounded-lg"
         style={{ minHeight: height }}
       >
-        {/* Arrowhead markers */}
+        {/* Arrowhead markers (50% smaller) */}
         <defs>
           <marker
             id="arrowhead-green"
-            markerWidth="10"
-            markerHeight="7"
-            refX="9"
-            refY="3.5"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="4.5"
+            refY="1.75"
             orient="auto"
           >
-            <polygon points="0 0, 10 3.5, 0 7" fill="#22c55e" />
+            <polygon points="0 0, 5 1.75, 0 3.5" fill="#22c55e" />
+          </marker>
+          <marker
+            id="arrowhead-blue"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="4.5"
+            refY="1.75"
+            orient="auto"
+          >
+            <polygon points="0 0, 5 1.75, 0 3.5" fill="#3b82f6" />
           </marker>
           <marker
             id="arrowhead-amber"
-            markerWidth="10"
-            markerHeight="7"
-            refX="9"
-            refY="3.5"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="4.5"
+            refY="1.75"
             orient="auto"
           >
-            <polygon points="0 0, 10 3.5, 0 7" fill="#f59e0b" />
+            <polygon points="0 0, 5 1.75, 0 3.5" fill="#f59e0b" />
+          </marker>
+          <marker
+            id="arrowhead-gray"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="4.5"
+            refY="1.75"
+            orient="auto"
+          >
+            <polygon points="0 0, 5 1.75, 0 3.5" fill="#9ca3af" />
           </marker>
           <marker
             id="arrowhead-green-reverse"
-            markerWidth="10"
-            markerHeight="7"
-            refX="1"
-            refY="3.5"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="0.5"
+            refY="1.75"
             orient="auto"
           >
-            <polygon points="10 0, 0 3.5, 10 7" fill="#22c55e" />
+            <polygon points="5 0, 0 1.75, 5 3.5" fill="#22c55e" />
+          </marker>
+          <marker
+            id="arrowhead-blue-reverse"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="0.5"
+            refY="1.75"
+            orient="auto"
+          >
+            <polygon points="5 0, 0 1.75, 5 3.5" fill="#3b82f6" />
           </marker>
           <marker
             id="arrowhead-amber-reverse"
-            markerWidth="10"
-            markerHeight="7"
-            refX="1"
-            refY="3.5"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="0.5"
+            refY="1.75"
             orient="auto"
           >
-            <polygon points="10 0, 0 3.5, 10 7" fill="#f59e0b" />
+            <polygon points="5 0, 0 1.75, 5 3.5" fill="#f59e0b" />
+          </marker>
+          <marker
+            id="arrowhead-gray-reverse"
+            markerWidth="5"
+            markerHeight="3.5"
+            refX="0.5"
+            refY="1.75"
+            orient="auto"
+          >
+            <polygon points="5 0, 0 1.75, 5 3.5" fill="#9ca3af" />
           </marker>
         </defs>
 
@@ -541,27 +694,32 @@ export function TrustGraph({
           if (!source || !target) return null;
 
           const color = getEdgeColor(edge);
-          const markerId = edge.level === 'verified' ? 'arrowhead-green' : 'arrowhead-amber';
-          const markerIdReverse = edge.level === 'verified' ? 'arrowhead-green-reverse' : 'arrowhead-amber-reverse';
+          const markerId = getMarkerId(edge);
+          const markerIdReverse = getMarkerIdReverse(edge);
 
-          // Calculate edge endpoint offset (don't overlap with node circle)
+          // Calculate edge endpoint offset based on actual node radii + gap
           const dx = target.x - source.x;
           const dy = target.y - source.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const nodeRadius = 24;
-          const offsetX = (dx / dist) * nodeRadius;
-          const offsetY = (dy / dist) * nodeRadius;
+          // Use actual radius for each node (current user is larger) + small gap
+          const gap = 4; // Gap between arrow and node circle
+          const sourceRadius = (source.isCurrentUser ? 28 : 24) + gap;
+          const targetRadius = (target.isCurrentUser ? 28 : 24) + gap;
+          const sourceOffsetX = (dx / dist) * sourceRadius;
+          const sourceOffsetY = (dy / dist) * sourceRadius;
+          const targetOffsetX = (dx / dist) * targetRadius;
+          const targetOffsetY = (dy / dist) * targetRadius;
 
           return (
             <g key={i}>
               <line
-                x1={source.x + offsetX}
-                y1={source.y + offsetY}
-                x2={target.x - offsetX}
-                y2={target.y - offsetY}
+                x1={source.x + sourceOffsetX}
+                y1={source.y + sourceOffsetY}
+                x2={target.x - targetOffsetX}
+                y2={target.y - targetOffsetY}
                 stroke={color}
-                strokeWidth={edge.bidirectional ? 3 : 2}
-                strokeOpacity={0.7}
+                strokeWidth={3}
+                strokeOpacity={edge.isSecondDegree ? 0.5 : 0.7}
                 markerEnd={`url(#${markerId})`}
                 markerStart={edge.bidirectional ? `url(#${markerIdReverse})` : undefined}
               />

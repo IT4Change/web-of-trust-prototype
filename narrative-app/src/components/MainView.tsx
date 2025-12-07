@@ -22,6 +22,8 @@ interface MainViewProps {
   // User Document (from AppShell when enableUserDocument is true)
   userDocId?: string;
   userDocHandle?: DocHandle<UserDocument>;
+  // Debug Dashboard toggle (from AppShell)
+  onToggleDebugDashboard: () => void;
 }
 
 /**
@@ -38,6 +40,7 @@ export function MainView({
   onNewDocument,
   userDocId,
   userDocHandle: _userDocHandle, // Available for direct mutations if needed
+  onToggleDebugDashboard,
 }: MainViewProps) {
   // In automerge-repo v2.x, use useDocHandle hook instead of repo.find()
   const docHandle = useDocHandle<OpinionGraphDoc>(documentId);
@@ -95,6 +98,7 @@ export function MainView({
       userDocHandle={userDocHandle}
       userDoc={userDoc}
       userDocUrl={userDocHandle?.url}
+      onToggleDebugDashboard={onToggleDebugDashboard}
     >
       {(ctx: AppContextValue) => {
         // Wrapper functions that filter by hidden users
@@ -267,6 +271,7 @@ export function MainView({
                     onTagClick={(tagId) => setActiveTagFilter((prev) => (prev === tagId ? null : tagId))}
                     currentUserId={narrative.currentUserDid}
                     doc={narrative.doc}
+                    onCreate={() => setIsCreateModalOpen(true)}
                   />
                 )}
               </div>

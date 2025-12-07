@@ -51,6 +51,13 @@ export interface TrustAttestation {
   trusterUserDocUrl?: string;
 
   /**
+   * UserDoc URL of the trustee (from QR code scan or incoming trust)
+   * Allows the truster to load the trustee's profile from their UserDocument.
+   * This is essential for cross-workspace trust relationships.
+   */
+  trusteeUserDocUrl?: string;
+
+  /**
    * JWS signature proving this attestation was created by the truster
    * Format: header.payload.signature (compact serialization)
    * Signed payload excludes: signature field itself

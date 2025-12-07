@@ -21,6 +21,8 @@ interface MainViewProps {
   // User Document (from AppShell when enableUserDocument is true)
   userDocId?: string;
   userDocHandle?: DocHandle<UserDocument>;
+  // Debug Dashboard toggle (from AppShell)
+  onToggleDebugDashboard: () => void;
 }
 
 type FilterType = 'all' | 'offer' | 'need';
@@ -33,6 +35,7 @@ export function MainView({
   onNewDocument,
   userDocId,
   userDocHandle,
+  onToggleDebugDashboard,
 }: MainViewProps) {
   // Load UserDocument for trust/verification features
   const [userDoc] = useDocument<UserDocument>(userDocId as AutomergeUrl | undefined);
@@ -109,6 +112,7 @@ export function MainView({
       userDocHandle={userDocHandle}
       userDoc={userDoc}
       userDocUrl={userDocHandle?.url}
+      onToggleDebugDashboard={onToggleDebugDashboard}
     >
       {(ctx: AppContextValue) => {
         // Filtered listings

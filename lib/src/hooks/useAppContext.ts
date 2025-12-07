@@ -16,7 +16,7 @@
  * Trust attestations are stored in the personal UserDocument, not workspace documents.
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { DocHandle, AutomergeUrl, Repo } from '@automerge/automerge-repo';
 import { useProfileUrl } from './useProfileUrl';
 import {
@@ -577,15 +577,9 @@ export function useAppContext<TData = unknown>(
   // Load profiles from trusted users' UserDocuments
   // This provides up-to-date avatars and display names for verified friends
   // Uses subscriptions to react to remote profile changes in real-time
-  const [lastLoadedUrlsKey, setLastLoadedUrlsKey] = useState('');
 
-  useEffect(() => {
-    if (!repo) {
-      setTrustedUserProfiles({});
-      return;
-    }
-
-    // Build a map of userDocUrls from trust relationships
+  // Compute userDocUrls from trust relationships (reactive to doc and userDoc changes)
+  const userDocUrlsKey = useMemo(() => {
     const userDocUrls = new Map<string, string>();
 
     // From trustReceived: users who trust us - they provided their trusterUserDocUrl
@@ -595,24 +589,47 @@ export function useAppContext<TData = unknown>(
       }
     }
 
-    // From trustGiven: we trusted them, but we need their UserDoc URL
-    // Check if they also trusted us back (then we have their URL from trustReceived)
-    // If not in trustReceived, check workspace doc's identityLookup
-    for (const trusteeDid of Object.keys(userDoc?.trustGiven || {})) {
-      if (!userDocUrls.has(trusteeDid) && doc?.identityLookup?.[trusteeDid]?.userDocUrl) {
+    // From trustGiven: we trusted them - check for trusteeUserDocUrl first (from QR scan)
+    // Then fallback to workspace doc's identityLookup
+    for (const [trusteeDid, attestation] of Object.entries(userDoc?.trustGiven || {})) {
+      if (userDocUrls.has(trusteeDid)) continue; // Already have from trustReceived
+
+      // First: Check if we stored the trusteeUserDocUrl when we scanned their QR code
+      if (attestation.trusteeUserDocUrl) {
+        userDocUrls.set(trusteeDid, attestation.trusteeUserDocUrl);
+        continue;
+      }
+
+      // Fallback: Check workspace doc's identityLookup (for same-workspace users)
+      if (doc?.identityLookup?.[trusteeDid]?.userDocUrl) {
         userDocUrls.set(trusteeDid, doc.identityLookup[trusteeDid].userDocUrl!);
       }
     }
 
-    // Create a stable key to check if we need to reload
-    const currentUrlsKey = Array.from(userDocUrls.entries())
+    // Return stable key for dependency tracking
+    return Array.from(userDocUrls.entries())
       .map(([did, url]) => `${did}=${url}`)
       .sort()
       .join('|');
+  }, [userDoc?.trustReceived, userDoc?.trustGiven, doc?.identityLookup]);
 
-    // Skip if nothing changed
-    if (currentUrlsKey === lastLoadedUrlsKey) {
+  useEffect(() => {
+    if (!repo) {
+      setTrustedUserProfiles({});
       return;
+    }
+
+    // Rebuild the map from the key (we need the actual Map for iteration)
+    const userDocUrls = new Map<string, string>();
+    if (userDocUrlsKey) {
+      for (const entry of userDocUrlsKey.split('|')) {
+        if (entry) {
+          const [did, url] = entry.split('=');
+          if (did && url) {
+            userDocUrls.set(did, url);
+          }
+        }
+      }
     }
 
     // Cleanup removed subscriptions (trust relationships that no longer exist)
@@ -626,7 +643,6 @@ export function useAppContext<TData = unknown>(
 
     if (userDocUrls.size === 0) {
       setTrustedUserProfiles({});
-      setLastLoadedUrlsKey(currentUrlsKey);
       return;
     }
 
@@ -648,6 +664,31 @@ export function useAppContext<TData = unknown>(
 
         try {
           const handle = await repo.find<UserDocument>(docUrl as AutomergeUrl);
+
+          // IMPORTANT: Attach change handler BEFORE reading .doc() to avoid race condition
+          // This ensures we don't miss any updates that arrive between find() and .doc()
+          const changeHandler = async ({ doc: changedDoc }: { doc: UserDocument }) => {
+            if (changedDoc) {
+              // Re-verify signature on change
+              const newSignatureStatus = changedDoc.profile
+                ? await verifyUserProfileSignature(changedDoc.profile, changedDoc.did)
+                : 'missing';
+
+              updateProfile(did, {
+                displayName: changedDoc.profile?.displayName,
+                avatarUrl: changedDoc.profile?.avatarUrl,
+                userDocUrl: docUrl,
+                fetchedAt: Date.now(),
+                profileSignatureStatus: newSignatureStatus,
+              });
+            }
+          };
+          handle.on('change', changeHandler);
+
+          // Store subscription for cleanup
+          profileSubscriptionsRef.current.set(docUrl, { handle, handler: changeHandler });
+
+          // Now read the current state (subscription is already active)
           const trustedUserDoc = handle.doc();
 
           if (trustedUserDoc) {
@@ -667,31 +708,23 @@ export function useAppContext<TData = unknown>(
               profileSignatureStatus,
             };
 
-            // Subscribe to changes on this document
-            const changeHandler = async ({ doc: changedDoc }: { doc: UserDocument }) => {
-              if (changedDoc) {
-                // Re-verify signature on change
-                const newSignatureStatus = changedDoc.profile
-                  ? await verifyUserProfileSignature(changedDoc.profile, changedDoc.did)
-                  : 'missing';
-
-                updateProfile(did, {
-                  displayName: changedDoc.profile?.displayName,
-                  avatarUrl: changedDoc.profile?.avatarUrl,
-                  userDocUrl: docUrl,
-                  fetchedAt: Date.now(),
-                  profileSignatureStatus: newSignatureStatus,
-                });
-              }
-            };
-            handle.on('change', changeHandler);
-
-            // Store subscription for cleanup
-            profileSubscriptionsRef.current.set(docUrl, { handle, handler: changeHandler });
-
             return { did, profile };
+          } else {
+            // Document not yet available from network - the change handler will catch it when it arrives
+            // Create a placeholder profile that will be updated when the doc syncs
+            console.log(`[useAppContext] UserDoc for ${did} not yet available, waiting for network sync...`);
+            return {
+              did,
+              profile: {
+                did,
+                displayName: undefined,
+                avatarUrl: undefined,
+                userDocUrl: docUrl,
+                fetchedAt: Date.now(),
+                profileSignatureStatus: 'pending' as const,
+              },
+            };
           }
-          return null;
         } catch (err) {
           console.warn(`Failed to load UserDoc for ${did}:`, err);
           return null;
@@ -714,7 +747,6 @@ export function useAppContext<TData = unknown>(
         ...prev,
         ...profiles,
       }));
-      setLastLoadedUrlsKey(currentUrlsKey);
     };
 
     loadProfilesWithSubscriptions();
@@ -726,7 +758,7 @@ export function useAppContext<TData = unknown>(
       }
       profileSubscriptionsRef.current.clear();
     };
-  }); // No dependencies - we check manually with lastLoadedUrlsKey
+  }, [repo, userDocUrlsKey]); // Proper dependencies - reacts to trust relationship changes
 
   // Current workspace info
   const currentWorkspace: WorkspaceInfo | null = doc
@@ -859,6 +891,15 @@ export function useAppContext<TData = unknown>(
     [identity, docHandle, onUpdateIdentityInDoc, userDocUrl, userDocHandle]
   );
 
+  // Toast functions - defined early so they can be used by handlers below
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+  }, []);
+
+  const clearToast = useCallback(() => {
+    setToastMessage(null);
+  }, []);
+
   const handleTrustUser = useCallback(
     async (trusteeDid: string, trusteeUserDocUrl?: string) => {
       console.log('🤝 handleTrustUser called', {
@@ -887,6 +928,12 @@ export function useAppContext<TData = unknown>(
       // Add trusterUserDocUrl if we have it (for bidirectional trust)
       if (userDocUrl) {
         (attestationData as TrustAttestation).trusterUserDocUrl = userDocUrl;
+      }
+
+      // Add trusteeUserDocUrl if provided (from QR scan - essential for cross-workspace trust)
+      if (trusteeUserDocUrl) {
+        (attestationData as TrustAttestation).trusteeUserDocUrl = trusteeUserDocUrl;
+        console.log('🤝 Storing trusteeUserDocUrl in attestation:', trusteeUserDocUrl);
       }
 
       // Sign the attestation
@@ -1005,7 +1052,7 @@ export function useAppContext<TData = unknown>(
         });
       }
     },
-    [userDocHandle, currentUserDid, repo, identity?.privateKey, userDocUrl]
+    [userDocHandle, currentUserDid, repo, identity?.privateKey, userDocUrl, showToast]
   );
 
   const handleRevokeTrust = useCallback(
@@ -1142,14 +1189,6 @@ export function useAppContext<TData = unknown>(
     });
   }, []);
 
-  const showToast = useCallback((message: string) => {
-    setToastMessage(message);
-  }, []);
-
-  const clearToast = useCallback(() => {
-    setToastMessage(null);
-  }, []);
-
   const handleCreateWorkspace = useCallback(
     (name: string, avatarDataUrl?: string) => {
       if (onCreateWorkspace) {
@@ -1174,6 +1213,58 @@ export function useAppContext<TData = unknown>(
   const clearConfetti = useCallback(() => {
     setShowConfetti(false);
   }, []);
+
+  // Track mutual friends to detect new ones (for confetti outside QR modal)
+  const previousMutualFriendsRef = useRef<Set<string>>(new Set());
+  const mutualFriendsInitializedRef = useRef(false);
+
+  // Auto-detect new mutual trust relationships (works even when QR modal is closed)
+  useEffect(() => {
+    const trustGivenCount = userDoc?.trustGiven ? Object.keys(userDoc.trustGiven).length : 0;
+    const trustReceivedCount = userDoc?.trustReceived ? Object.keys(userDoc.trustReceived).length : 0;
+
+    console.log('[useAppContext] Mutual trust check triggered', {
+      hasTrustGiven: !!userDoc?.trustGiven,
+      hasTrustReceived: !!userDoc?.trustReceived,
+      trustGivenCount,
+      trustReceivedCount,
+      initialized: mutualFriendsInitializedRef.current,
+      previousCount: previousMutualFriendsRef.current.size,
+    });
+
+    if (!userDoc?.trustGiven || !userDoc?.trustReceived) return;
+
+    // Find all mutual friends (both directions exist)
+    const currentMutualFriends = new Set<string>();
+    for (const did of Object.keys(userDoc.trustGiven)) {
+      if (userDoc.trustReceived[did]) {
+        currentMutualFriends.add(did);
+      }
+    }
+
+    console.log('[useAppContext] Current mutual friends:', currentMutualFriends.size, Array.from(currentMutualFriends).map(d => d.substring(0, 12)));
+
+    // On first run, just initialize the ref without triggering confetti
+    if (!mutualFriendsInitializedRef.current) {
+      console.log('[useAppContext] Initializing mutual friends tracking with', currentMutualFriends.size, 'existing mutual friends');
+      previousMutualFriendsRef.current = currentMutualFriends;
+      mutualFriendsInitializedRef.current = true;
+      return;
+    }
+
+    // Detect newly established mutual trust
+    for (const did of currentMutualFriends) {
+      if (!previousMutualFriendsRef.current.has(did)) {
+        // New mutual friend detected!
+        const friendName = trustedUserProfiles[did]?.displayName || did.substring(0, 12) + '...';
+        console.log('[useAppContext] 🎉 Auto-detected NEW mutual trust:', did, friendName);
+        handleMutualTrustEstablished(did, friendName);
+      }
+    }
+
+    // Update the ref for next comparison
+    previousMutualFriendsRef.current = currentMutualFriends;
+  }, [userDoc?.trustGiven, userDoc?.trustReceived, trustedUserProfiles, handleMutualTrustEstablished]);
 
   // Props ready for NewWorkspaceModal
   const newWorkspaceModalProps = {

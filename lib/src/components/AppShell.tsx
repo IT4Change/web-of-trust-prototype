@@ -34,6 +34,7 @@ import { LoadingScreen, DocumentLoadingScreen } from './LoadingScreen';
 import { initDebugTools, updateDebugState } from '../utils/debug';
 import { useCrossTabSync } from '../hooks/useCrossTabSync';
 import { isValidAutomergeUrl } from '@automerge/automerge-repo';
+import { DebugDashboard } from './DebugDashboard';
 
 /** Timeout for a single document loading attempt (ms) */
 const DOC_LOAD_TIMEOUT = 8000;
@@ -59,6 +60,9 @@ export interface AppShellChildProps {
   // User Document (optional, only if enableUserDocument is true)
   userDocId?: string;
   userDocHandle?: DocHandle<UserDocument>;
+
+  // Debug Dashboard controls
+  onToggleDebugDashboard: () => void;
 }
 
 export interface AppShellProps<TDoc> {
@@ -134,6 +138,9 @@ export function AppShell<TDoc>({
   // User Document state (optional)
   const [userDocId, setUserDocId] = useState<string | undefined>(undefined);
   const [userDocHandle, setUserDocHandle] = useState<DocHandle<UserDocument> | undefined>(undefined);
+
+  // Debug Dashboard state
+  const [showDebugDashboard, setShowDebugDashboard] = useState(false);
 
   // Stored identity for document creation
   const storedIdentityRef = useRef<UserIdentity | null>(null);
@@ -523,12 +530,18 @@ export function AppShell<TDoc>({
         displayName,
         onResetIdentity: handleResetIdentity,
         onNewDocument: handleNewDocument,
+        onToggleDebugDashboard: () => setShowDebugDashboard(prev => !prev),
         // User Document (only if enabled)
         ...(enableUserDocument && {
           userDocId,
           userDocHandle,
         }),
       })}
+      {/* Debug Dashboard - controlled via navbar menu */}
+      <DebugDashboard
+        isOpen={showDebugDashboard}
+        onClose={() => setShowDebugDashboard(false)}
+      />
     </RepoContext.Provider>
   );
 }

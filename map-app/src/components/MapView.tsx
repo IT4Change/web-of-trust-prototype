@@ -17,6 +17,8 @@ interface MapViewProps {
   // User Document (from AppShell when enableUserDocument is true)
   userDocId?: string;
   userDocHandle?: DocHandle<UserDocument>;
+  // Debug Dashboard toggle (from AppShell)
+  onToggleDebugDashboard: () => void;
 }
 
 /**
@@ -33,6 +35,7 @@ export function MapView({
   onNewDocument,
   userDocId,
   userDocHandle,
+  onToggleDebugDashboard,
 }: MapViewProps) {
   // Hook now handles docHandle internally using useDocHandle
   const mapData = useMapDocument(
@@ -106,6 +109,7 @@ export function MapView({
       userDoc={userDoc}
       userDocUrl={userDocHandle?.url}
       profileActions={getProfileActions}
+      onToggleDebugDashboard={onToggleDebugDashboard}
     >
       {(ctx: AppContextValue) => (
         <div className="flex-1 relative overflow-hidden">

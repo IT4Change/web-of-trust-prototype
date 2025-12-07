@@ -22,6 +22,7 @@ import type { UserDocument } from '../schema/userDocument';
 import type { BaseDocument } from '../schema/document';
 import { loadSharedIdentity, type StoredIdentity } from './storage';
 import type { Repo, AutomergeUrl, DocHandle } from '@automerge/automerge-repo';
+import * as Automerge from '@automerge/automerge';
 import type { TrustedUserProfile } from '../hooks/useAppContext';
 
 // Internal repo reference for loading arbitrary documents
@@ -37,6 +38,7 @@ const _activeWatchers: SyncWatcher[] = [];
 declare global {
   interface Window {
     __narrative: NarrativeDebug;
+    __narrativeRepo: Repo | null;
     __userDoc: UserDocument | null;
     __userDocUrl: string | null;
     __doc: BaseDocument<unknown> | null;
@@ -92,6 +94,12 @@ export interface NarrativeDebug {
   watchSync: (docUrl: string) => Promise<SyncWatcher | null>;
   stopAllWatchers: () => void;
   testSync: (docUrl: string) => Promise<boolean>;
+
+  // History
+  history: (docUrl?: string) => Promise<void>;
+  changes: (docUrl?: string, limit?: number) => Promise<void>;
+  diff: (docUrl: string, fromHeads?: string[], toHeads?: string[]) => Promise<void>;
+  heads: (docUrl?: string) => Promise<string[]>;
 
   // Export
   exportUserDoc: () => void;
@@ -306,6 +314,12 @@ function printHelp(): void {
   __narrative.watchSync(docUrl)    - Watch a document for changes in real-time
   __narrative.stopAllWatchers()    - Stop all sync watchers
   __narrative.testSync(docUrl)     - Test loading a specific document
+
+📌 History & Time Travel:
+  __narrative.history(docUrl?)     - Show all changes (last 20) with metadata
+  __narrative.changes(docUrl?, n)  - Show last n changes in detail (default: 10)
+  __narrative.heads(docUrl?)       - Get current document heads (hashes)
+  __narrative.diff(docUrl, from?, to?) - Show diff between document states
 
 📌 Tips:
   - Documents are reactive - __userDoc and __doc update automatically
@@ -717,6 +731,189 @@ export function initDebugTools(): void {
       }
     },
 
+    // History functions
+    history: async (docUrl?: string) => {
+      if (!_repo) {
+        console.error('❌ Repo not initialized.');
+        return;
+      }
+
+      const url = docUrl || window.__docUrl || window.__userDocUrl;
+      if (!url) {
+        console.error('❌ No document URL provided or available.');
+        return;
+      }
+
+      console.group(`📜 Document History: ${url.substring(0, 50)}...`);
+
+      try {
+        const handle = await _repo.find(url as AutomergeUrl);
+        const doc = handle.doc();
+
+        if (!doc) {
+          console.error('❌ Document not loaded.');
+          console.groupEnd();
+          return;
+        }
+
+        // Get all changes
+        const changes = Automerge.getAllChanges(doc as Automerge.Doc<unknown>);
+        console.log(`Total changes: ${changes.length}`);
+
+        // Decode and display change metadata
+        const changeInfos = changes.map((change, index) => {
+          const decoded = Automerge.decodeChange(change);
+          return {
+            index,
+            hash: decoded.hash.substring(0, 16) + '...',
+            actor: decoded.actor.substring(0, 16) + '...',
+            seq: decoded.seq,
+            time: decoded.time ? new Date(decoded.time * 1000).toLocaleString() : 'N/A',
+            message: decoded.message || '(no message)',
+            deps: decoded.deps.length,
+          };
+        });
+
+        console.table(changeInfos.slice(-20)); // Show last 20 changes
+        if (changes.length > 20) {
+          console.log(`... showing last 20 of ${changes.length} changes`);
+        }
+
+        console.groupEnd();
+      } catch (err) {
+        console.error('❌ Failed to get history:', err);
+        console.groupEnd();
+      }
+    },
+
+    changes: async (docUrl?: string, limit: number = 10) => {
+      if (!_repo) {
+        console.error('❌ Repo not initialized.');
+        return;
+      }
+
+      const url = docUrl || window.__docUrl || window.__userDocUrl;
+      if (!url) {
+        console.error('❌ No document URL provided or available.');
+        return;
+      }
+
+      console.group(`📝 Recent Changes (last ${limit}): ${url.substring(0, 50)}...`);
+
+      try {
+        const handle = await _repo.find(url as AutomergeUrl);
+        const doc = handle.doc();
+
+        if (!doc) {
+          console.error('❌ Document not loaded.');
+          console.groupEnd();
+          return;
+        }
+
+        const changes = Automerge.getAllChanges(doc as Automerge.Doc<unknown>);
+        const recentChanges = changes.slice(-limit);
+
+        for (let i = 0; i < recentChanges.length; i++) {
+          const decoded = Automerge.decodeChange(recentChanges[i]);
+          console.group(`Change ${changes.length - limit + i + 1}/${changes.length}`);
+          console.log('Hash:', decoded.hash);
+          console.log('Actor:', decoded.actor);
+          console.log('Seq:', decoded.seq);
+          console.log('Time:', decoded.time ? new Date(decoded.time * 1000).toLocaleString() : 'N/A');
+          console.log('Message:', decoded.message || '(none)');
+          console.log('Dependencies:', decoded.deps);
+          console.groupEnd();
+        }
+
+        console.groupEnd();
+      } catch (err) {
+        console.error('❌ Failed to get changes:', err);
+        console.groupEnd();
+      }
+    },
+
+    diff: async (docUrl: string, fromHeads?: string[], toHeads?: string[]) => {
+      if (!_repo) {
+        console.error('❌ Repo not initialized.');
+        return;
+      }
+
+      console.group(`🔀 Document Diff: ${docUrl.substring(0, 50)}...`);
+
+      try {
+        const handle = await _repo.find(docUrl as AutomergeUrl);
+        const doc = handle.doc();
+
+        if (!doc) {
+          console.error('❌ Document not loaded.');
+          console.groupEnd();
+          return;
+        }
+
+        // If no heads provided, show diff between first and current state
+        const currentHeads = Automerge.getHeads(doc as Automerge.Doc<unknown>);
+        const to = toHeads || currentHeads;
+        const from = fromHeads || [];
+
+        console.log('From heads:', from.length ? from : '(empty/initial)');
+        console.log('To heads:', to);
+
+        // Get patches between states
+        const patches = Automerge.diff(
+          doc as Automerge.Doc<unknown>,
+          from as Automerge.Heads,
+          to as Automerge.Heads
+        );
+
+        if (patches.length === 0) {
+          console.log('No differences found.');
+        } else {
+          console.log(`Found ${patches.length} patch(es):`);
+          console.table(patches.map(p => ({
+            action: p.action,
+            path: p.path.join('.'),
+            value: 'value' in p ? JSON.stringify(p.value).substring(0, 50) : 'N/A',
+          })));
+        }
+
+        console.groupEnd();
+      } catch (err) {
+        console.error('❌ Failed to compute diff:', err);
+        console.groupEnd();
+      }
+    },
+
+    heads: async (docUrl?: string) => {
+      if (!_repo) {
+        console.error('❌ Repo not initialized.');
+        return [];
+      }
+
+      const url = docUrl || window.__docUrl || window.__userDocUrl;
+      if (!url) {
+        console.error('❌ No document URL provided or available.');
+        return [];
+      }
+
+      try {
+        const handle = await _repo.find(url as AutomergeUrl);
+        const doc = handle.doc();
+
+        if (!doc) {
+          console.error('❌ Document not loaded.');
+          return [];
+        }
+
+        const heads = Automerge.getHeads(doc as Automerge.Doc<unknown>);
+        console.log(`📍 Current heads for ${url.substring(0, 50)}...`);
+        console.log(heads);
+        return heads;
+      } catch (err) {
+        console.error('❌ Failed to get heads:', err);
+        return [];
+      }
+    },
+
     // Help
     help: printHelp,
   };
@@ -726,6 +923,7 @@ export function initDebugTools(): void {
   window.__userDocUrl = null;
   window.__doc = null;
   window.__docUrl = null;
+  window.__narrativeRepo = null;
   window.__identity = loadSharedIdentity();
 
   // Log welcome message
@@ -760,6 +958,7 @@ export function updateDebugState(options: {
   }
   if (options.repo !== undefined) {
     _repo = options.repo;
+    window.__narrativeRepo = options.repo;
   }
   if (options.trustedUserProfiles !== undefined) {
     _trustedUserProfiles = options.trustedUserProfiles;

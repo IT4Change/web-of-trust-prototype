@@ -236,6 +236,7 @@ export function NarrativeModule({
             identities: context.identities,
             data,
           }}
+          onCreate={() => setIsCreateModalOpen(true)}
         />
       </div>
 

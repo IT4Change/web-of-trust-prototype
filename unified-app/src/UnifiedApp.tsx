@@ -26,6 +26,8 @@ interface UnifiedAppProps {
   // User Document (from AppShell when enableUserDocument is true)
   userDocId?: string;
   userDocHandle?: DocHandle<UserDocument>;
+  // Debug Dashboard toggle (from AppShell)
+  onToggleDebugDashboard: () => void;
 }
 
 /**
@@ -38,6 +40,7 @@ export function UnifiedApp({
   onNewDocument,
   userDocId,
   userDocHandle,
+  onToggleDebugDashboard,
 }: UnifiedAppProps) {
   // In automerge-repo v2.x, use useDocHandle hook instead of repo.find()
   const docHandle = useDocHandle<UnifiedDocument>(documentId);
@@ -98,6 +101,7 @@ export function UnifiedApp({
       userDocHandle={userDocHandle}
       userDoc={userDoc}
       userDocUrl={userDocHandle?.url}
+      onToggleDebugDashboard={onToggleDebugDashboard}
     >
       {(ctx: AppContextValue) => (
         <>

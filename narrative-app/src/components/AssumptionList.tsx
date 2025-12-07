@@ -12,6 +12,7 @@ interface AssumptionListProps {
   onTagClick?: (tagId: string) => void;
   currentUserId?: string;
   doc?: OpinionGraphDoc;
+  onCreate?: () => void;
 }
 
 /**
@@ -28,6 +29,7 @@ export function AssumptionList({
   onTagClick,
   currentUserId,
   doc,
+  onCreate,
 }: AssumptionListProps) {
   const validAssumptions = assumptions.filter((a): a is Assumption => a !== null);
   const tagMap = tags.reduce<Record<string, Tag>>((acc, tag) => {
@@ -39,8 +41,13 @@ export function AssumptionList({
     return (
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body items-center text-center">
-          <h2 className="card-title">No assumptions yet</h2>
-          <p>Create your first assumption to get started!</p>
+          <button
+            className="btn btn-primary"
+            onClick={onCreate}
+          >
+            + New Assumption
+          </button>
+          <p className="mt-2 text-base-content/60">Create your first assumption to get started!</p>
         </div>
       </div>
     );

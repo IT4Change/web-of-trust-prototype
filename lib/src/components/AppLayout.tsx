@@ -105,6 +105,11 @@ export interface AppLayoutProps<TDoc extends BaseDocument<unknown>> {
    * Whether to hide trust actions in the profile modal (default: false)
    */
   hideProfileTrustActions?: boolean;
+
+  /**
+   * Callback to toggle the debug dashboard (from AppShell)
+   */
+  onToggleDebugDashboard?: () => void;
 }
 
 /**
@@ -168,6 +173,7 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
   enableProfileUrl = true,
   profileActions,
   hideProfileTrustActions = false,
+  onToggleDebugDashboard,
 }: AppLayoutProps<TDoc>) {
   // Get repo for bidirectional trust sync
   const repo = useRepo();
@@ -224,7 +230,7 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
     <div className="w-screen h-dvh bg-base-200 flex flex-col overflow-hidden">
       {/* Navbar */}
       {ctx.navbarProps && (
-        <AppNavbar {...ctx.navbarProps}>
+        <AppNavbar {...ctx.navbarProps} onToggleDebugDashboard={onToggleDebugDashboard}>
           {navbarChildren}
         </AppNavbar>
       )}

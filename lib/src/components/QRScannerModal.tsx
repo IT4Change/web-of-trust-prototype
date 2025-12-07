@@ -9,7 +9,7 @@ import { UserAvatar } from './UserAvatar';
 import { getDefaultDisplayName, extractPublicKeyFromDid, base64Encode } from '../utils/did';
 import { verifyProfileSignature } from '../utils/signature';
 
-type SignatureStatus = 'valid' | 'invalid' | 'missing' | 'pending' | 'loading';
+type SignatureStatus = 'valid' | 'invalid' | 'missing' | 'pending' | 'loading' | 'waiting';
 
 interface QRScannerModalProps<TData = unknown> {
   isOpen: boolean;
@@ -68,11 +68,19 @@ export function QRScannerModal<TData = unknown>({
         const handle = await repo.find<UserDocument>(scannedUserDocUrl as AutomergeUrl);
 
         // Function to update profile from document
-        const updateFromDoc = async (userDoc: UserDocument | undefined) => {
+        const updateFromDoc = async (userDoc: UserDocument | undefined, isInitialLoad: boolean = false) => {
           if (!userDoc || !userDoc.profile) {
-            console.warn('[QRScannerModal] UserDocument or profile not found');
-            setSignatureStatus('missing');
-            setLoadedProfile(null);
+            if (isInitialLoad) {
+              // Document not yet synced from network - show waiting state
+              console.log('[QRScannerModal] UserDocument not yet available, waiting for network sync...');
+              setSignatureStatus('waiting');
+              setLoadedProfile(null);
+            } else {
+              // Doc was available but profile is missing
+              console.warn('[QRScannerModal] UserDocument loaded but profile not found');
+              setSignatureStatus('missing');
+              setLoadedProfile(null);
+            }
             return;
           }
 
@@ -103,14 +111,15 @@ export function QRScannerModal<TData = unknown>({
           setSignatureStatus(result.valid ? 'valid' : 'invalid');
         };
 
-        // Initial update
-        await updateFromDoc(handle.doc());
-
+        // IMPORTANT: Subscribe BEFORE reading initial doc to avoid race condition
         // Subscribe to changes for reactive updates
         const onChange = () => {
-          updateFromDoc(handle.doc());
+          updateFromDoc(handle.doc(), false);
         };
         handle.on('change', onChange);
+
+        // Now do initial update (subscription is already active)
+        await updateFromDoc(handle.doc(), true);
 
         cleanup = () => {
           handle.off('change', onChange);
@@ -329,9 +338,9 @@ export function QRScannerModal<TData = unknown>({
 
     // Render signature badge
     const renderSignatureBadge = () => {
-      if (signatureStatus === 'loading') {
+      if (signatureStatus === 'loading' || signatureStatus === 'waiting') {
         return (
-          <span className="tooltip tooltip-top" data-tip="Profil wird geprüft...">
+          <span className="tooltip tooltip-top" data-tip={signatureStatus === 'waiting' ? "Warte auf Netzwerk..." : "Profil wird geprüft..."}>
             <span className="loading loading-spinner loading-xs"></span>
           </span>
         );
@@ -371,12 +380,18 @@ export function QRScannerModal<TData = unknown>({
           <h3 className="font-bold text-xl mb-4 text-center">Freund hinzufügen</h3>
 
           <div className="flex flex-col items-center gap-4 p-4 bg-base-200 rounded-lg">
-            <div className="w-20 h-20 rounded-full overflow-hidden ring-2 ring-primary ring-offset-2 ring-offset-base-100">
-              <UserAvatar
-                did={scannedDid}
-                avatarUrl={avatarUrl}
-                size={80}
-              />
+            <div className={`w-20 h-20 rounded-full overflow-hidden ring-2 ring-offset-2 ring-offset-base-100 ${signatureStatus === 'waiting' ? 'ring-warning' : 'ring-primary'}`}>
+              {signatureStatus === 'waiting' && !loadedProfile ? (
+                <div className="w-full h-full flex items-center justify-center bg-base-300">
+                  <span className="loading loading-spinner loading-md"></span>
+                </div>
+              ) : (
+                <UserAvatar
+                  did={scannedDid}
+                  avatarUrl={avatarUrl}
+                  size={80}
+                />
+              )}
             </div>
             <div className="text-center">
               <div className="flex items-center justify-center gap-2">
@@ -388,6 +403,15 @@ export function QRScannerModal<TData = unknown>({
               </div>
             </div>
           </div>
+
+          {signatureStatus === 'waiting' && (
+            <div className="alert alert-warning py-2 justify-center text-center">
+              <span className="loading loading-spinner loading-xs"></span>
+              <span className="text-sm">
+                Profil wird vom Netzwerk geladen...
+              </span>
+            </div>
+          )}
 
           <div className="alert alert-info py-2 justify-center text-center">
             <span className="text-sm">

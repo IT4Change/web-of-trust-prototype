@@ -63,6 +63,14 @@ export {
   broadcastUserDocChange,
   type CrossTabSyncOptions,
 } from './hooks/useCrossTabSync';
+export {
+  useDocumentChanges,
+  type ChangeEntry,
+  type EntityType,
+  type ChangePriority,
+  type UseDocumentChangesOptions,
+  type UseDocumentChangesResult,
+} from './hooks/useDocumentChanges';
 
 // Components exports
 export { AppShell, type AppShellProps, type AppShellChildProps } from './components/AppShell';
@@ -88,6 +96,8 @@ export { Toast } from './components/Toast';
 export { NewWorkspaceModal, type NewWorkspaceModalProps } from './components/NewWorkspaceModal';
 export { AppLayout, type AppLayoutProps } from './components/AppLayout';
 export { Confetti } from './components/Confetti';
+export { DebugDashboard } from './components/DebugDashboard';
+export { TrustGraph, type TrustGraphProps } from './components/TrustGraph';
 
 // DID utilities exports
 export {

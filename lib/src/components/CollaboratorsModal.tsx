@@ -6,11 +6,13 @@
  * - trustReceived (people who trust you)
  *
  * Clicking on a user opens their profile modal.
+ * Includes a visual Trust Graph for network visualization.
  */
 
 import { useState, useEffect } from 'react';
 import { UserListItem } from './UserListItem';
 import { QRScannerModal } from './QRScannerModal';
+import { TrustGraph } from './TrustGraph';
 import type { BaseDocument } from '../schema/document';
 import type { UserDocument } from '../schema/userDocument';
 import type { TrustAttestation } from '../schema/identity';
@@ -66,6 +68,8 @@ interface CollaboratorsModalProps<TData = unknown> {
   userDocUrl?: string;
 }
 
+type ViewTab = 'list' | 'graph';
+
 export function CollaboratorsModal<TData = unknown>({
   isOpen,
   onClose,
@@ -80,6 +84,7 @@ export function CollaboratorsModal<TData = unknown>({
   userDocUrl,
 }: CollaboratorsModalProps<TData>) {
   const [showScanner, setShowScanner] = useState(false);
+  const [activeTab, setActiveTab] = useState<ViewTab>('list');
 
   // Track signature verification status for each DID
   const [signatureStatuses, setSignatureStatuses] = useState<
@@ -224,58 +229,100 @@ export function CollaboratorsModal<TData = unknown>({
           )}
         </div>
 
-        {/* Scan QR Button */}
-        <button
-          className="btn btn-primary btn-sm w-full mb-4"
-          onClick={() => setShowScanner(true)}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+        {/* Tabs */}
+        <div className="tabs tabs-boxed mb-4">
+          <button
+            className={`tab flex-1 gap-2 ${activeTab === 'list' ? 'tab-active' : ''}`}
+            onClick={() => setActiveTab('list')}
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
-            />
-          </svg>
-          QR-Code scannen zum Verifizieren
-        </button>
-
-        <div className="space-y-2 max-h-[60vh] overflow-y-auto pt-8 -mt-8">
-          {collaborators.map(({ did, displayName, avatarUrl, outgoingTrust, incomingTrust, profileSignatureStatus }) => (
-            <UserListItem
-              key={did}
-              did={did}
-              displayName={displayName}
-              avatarUrl={avatarUrl}
-              currentUserDid={currentUserDid}
-              isHidden={hiddenUserDids.has(did)}
-              outgoingTrust={outgoingTrust}
-              incomingTrust={incomingTrust}
-              outgoingSignatureStatus={signatureStatuses[did]?.outgoing}
-              incomingSignatureStatus={signatureStatuses[did]?.incoming}
-              profileSignatureStatus={profileSignatureStatus}
-              onUserClick={onUserClick}
-              onToggleVisibility={onToggleUserVisibility}
-              showVisibilityToggle={true}
-              showTrustBadges={true}
-            />
-          ))}
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>
+            Liste
+          </button>
+          <button
+            className={`tab flex-1 gap-2 ${activeTab === 'graph' ? 'tab-active' : ''}`}
+            onClick={() => setActiveTab('graph')}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+            </svg>
+            Netzwerk
+          </button>
         </div>
 
-        {collaborators.length === 0 && (
-          <div className="text-center py-8 text-base-content/60">
-            <p className="mb-2">Noch keine Vertrauensbeziehungen</p>
-            <p className="text-xs">Scanne den QR-Code eines anderen Benutzers um zu verifizieren</p>
+        {/* List View */}
+        {activeTab === 'list' && (
+          <>
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {collaborators.map(({ did, displayName, avatarUrl, outgoingTrust, incomingTrust, profileSignatureStatus }) => (
+                <UserListItem
+                  key={did}
+                  did={did}
+                  displayName={displayName}
+                  avatarUrl={avatarUrl}
+                  currentUserDid={currentUserDid}
+                  isHidden={hiddenUserDids.has(did)}
+                  outgoingTrust={outgoingTrust}
+                  incomingTrust={incomingTrust}
+                  outgoingSignatureStatus={signatureStatuses[did]?.outgoing}
+                  incomingSignatureStatus={signatureStatuses[did]?.incoming}
+                  profileSignatureStatus={profileSignatureStatus}
+                  onUserClick={onUserClick}
+                  onToggleVisibility={onToggleUserVisibility}
+                  showVisibilityToggle={true}
+                  showTrustBadges={true}
+                />
+              ))}
+            </div>
+
+            {collaborators.length === 0 && (
+              <div className="text-center py-8 text-base-content/60">
+                <p className="mb-2">Noch keine Vertrauensbeziehungen</p>
+                <p className="text-xs">Scanne den QR-Code eines anderen Benutzers um zu verifizieren</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Graph View */}
+        {activeTab === 'graph' && (
+          <div className="max-h-[50vh] overflow-hidden">
+            <TrustGraph
+              userDoc={userDoc ?? undefined}
+              trustedUserProfiles={trustedUserProfiles}
+              height={350}
+              onNodeClick={onUserClick}
+              showLegend={true}
+              showStats={false}
+            />
+            <p className="text-xs text-base-content/50 text-center mt-2">
+              Klicke auf einen Knoten um das Profil zu öffnen
+            </p>
           </div>
         )}
 
         <div className="modal-action">
+          <button
+            className="btn btn-primary gap-2"
+            onClick={() => setShowScanner(true)}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"
+              />
+            </svg>
+            QR-Code scannen
+          </button>
           <button className="btn" onClick={onClose}>
             Schließen
           </button>

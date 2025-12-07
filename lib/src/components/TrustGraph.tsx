@@ -8,16 +8,33 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { UserDocument } from '../schema/userDocument';
 import type { TrustAttestation } from '../schema/identity';
+import type { TrustedUserProfile } from '../hooks/useAppContext';
+import { UserAvatar } from './UserAvatar';
 
 interface TrustNode {
   id: string;
   label: string;
+  avatarUrl?: string;
   x: number;
   y: number;
   vx: number;
   vy: number;
   isCurrentUser: boolean;
   trustLevel: 'self' | 'direct' | 'indirect';
+}
+
+// Seeded random for deterministic positioning
+function seededRandom(seed: string): () => number {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return () => {
+    hash = (hash * 1103515245 + 12345) & 0x7fffffff;
+    return (hash / 0x7fffffff);
+  };
 }
 
 interface TrustEdge {
@@ -30,22 +47,30 @@ interface TrustEdge {
 export interface TrustGraphProps {
   /** Current user's document */
   userDoc?: UserDocument;
-  /** Map of external user documents by DID */
+  /** Map of external user documents by DID (from DebugDashboard) */
   externalDocs?: Map<string, UserDocument>;
+  /** Trusted user profiles (from useAppContext - alternative to externalDocs) */
+  trustedUserProfiles?: Record<string, TrustedUserProfile>;
   /** Width of the graph (default: 100%) */
   width?: number | string;
   /** Height of the graph (default: 400px) */
   height?: number;
   /** Callback when a node is clicked */
   onNodeClick?: (did: string) => void;
+  /** Whether to show the legend (default: true) */
+  showLegend?: boolean;
+  /** Whether to show stats (default: true) */
+  showStats?: boolean;
 }
 
 /**
  * Extract nodes and edges from user documents
+ * Supports either externalDocs (full UserDocuments) or trustedUserProfiles (lightweight)
  */
 function buildGraph(
   userDoc: UserDocument | undefined,
-  externalDocs: Map<string, UserDocument>
+  externalDocs: Map<string, UserDocument>,
+  trustedUserProfiles: Record<string, TrustedUserProfile> = {}
 ): { nodes: TrustNode[]; edges: TrustEdge[] } {
   if (!userDoc) {
     return { nodes: [], edges: [] };
@@ -56,10 +81,30 @@ function buildGraph(
   const centerX = 300;
   const centerY = 200;
 
+  // Create seeded random generator based on userDoc.did for deterministic layout
+  const getRandom = seededRandom(userDoc.did);
+
+  // Helper to get label for a DID
+  const getLabel = (did: string): string => {
+    const externalDoc = externalDocs.get(did);
+    if (externalDoc?.profile?.displayName) return externalDoc.profile.displayName;
+    const profile = trustedUserProfiles[did];
+    if (profile?.displayName) return profile.displayName;
+    return did.substring(0, 16) + '...';
+  };
+
+  // Helper to get avatar for a DID
+  const getAvatarUrl = (did: string): string | undefined => {
+    const externalDoc = externalDocs.get(did);
+    if (externalDoc?.profile?.avatarUrl) return externalDoc.profile.avatarUrl;
+    return trustedUserProfiles[did]?.avatarUrl;
+  };
+
   // Add current user as center node
   nodesMap.set(userDoc.did, {
     id: userDoc.did,
     label: userDoc.profile?.displayName || userDoc.did.substring(0, 16) + '...',
+    avatarUrl: userDoc.profile?.avatarUrl,
     x: centerX,
     y: centerY,
     vx: 0,
@@ -72,12 +117,12 @@ function buildGraph(
   for (const [trusteeDid, attestation] of Object.entries(userDoc.trustGiven || {})) {
     // Add trustee node if not exists
     if (!nodesMap.has(trusteeDid)) {
-      const externalDoc = externalDocs.get(trusteeDid);
       nodesMap.set(trusteeDid, {
         id: trusteeDid,
-        label: externalDoc?.profile?.displayName || trusteeDid.substring(0, 16) + '...',
-        x: centerX + (Math.random() - 0.5) * 200,
-        y: centerY + (Math.random() - 0.5) * 200,
+        label: getLabel(trusteeDid),
+        avatarUrl: getAvatarUrl(trusteeDid),
+        x: centerX + (getRandom() - 0.5) * 200,
+        y: centerY + (getRandom() - 0.5) * 200,
         vx: 0,
         vy: 0,
         isCurrentUser: false,
@@ -104,12 +149,12 @@ function buildGraph(
   for (const [trusterDid, attestation] of Object.entries(userDoc.trustReceived || {})) {
     // Add truster node if not exists
     if (!nodesMap.has(trusterDid)) {
-      const externalDoc = externalDocs.get(trusterDid);
       nodesMap.set(trusterDid, {
         id: trusterDid,
-        label: externalDoc?.profile?.displayName || trusterDid.substring(0, 16) + '...',
-        x: centerX + (Math.random() - 0.5) * 200,
-        y: centerY + (Math.random() - 0.5) * 200,
+        label: getLabel(trusterDid),
+        avatarUrl: getAvatarUrl(trusterDid),
+        x: centerX + (getRandom() - 0.5) * 200,
+        y: centerY + (getRandom() - 0.5) * 200,
         vx: 0,
         vy: 0,
         isCurrentUser: false,
@@ -132,7 +177,7 @@ function buildGraph(
     }
   }
 
-  // Process external documents for 2nd-degree connections
+  // Process external documents for 2nd-degree connections (only if externalDocs provided)
   for (const [did, extDoc] of externalDocs) {
     // Add edges from external users' trustGiven (outgoing trust)
     for (const [trusteeDid, attestation] of Object.entries(extDoc.trustGiven || {})) {
@@ -141,12 +186,12 @@ function buildGraph(
 
       // Add node if it's a new 2nd-degree connection
       if (!nodesMap.has(trusteeDid)) {
-        const targetDoc = externalDocs.get(trusteeDid);
         nodesMap.set(trusteeDid, {
           id: trusteeDid,
-          label: targetDoc?.profile?.displayName || trusteeDid.substring(0, 16) + '...',
-          x: centerX + (Math.random() - 0.5) * 300,
-          y: centerY + (Math.random() - 0.5) * 300,
+          label: getLabel(trusteeDid),
+          avatarUrl: getAvatarUrl(trusteeDid),
+          x: centerX + (getRandom() - 0.5) * 300,
+          y: centerY + (getRandom() - 0.5) * 300,
           vx: 0,
           vy: 0,
           isCurrentUser: false,
@@ -181,12 +226,12 @@ function buildGraph(
 
       // Add node if it's a new 2nd-degree connection
       if (!nodesMap.has(trusterDid)) {
-        const trusterDoc = externalDocs.get(trusterDid);
         nodesMap.set(trusterDid, {
           id: trusterDid,
-          label: trusterDoc?.profile?.displayName || trusterDid.substring(0, 16) + '...',
-          x: centerX + (Math.random() - 0.5) * 300,
-          y: centerY + (Math.random() - 0.5) * 300,
+          label: getLabel(trusterDid),
+          avatarUrl: getAvatarUrl(trusterDid),
+          x: centerX + (getRandom() - 0.5) * 300,
+          y: centerY + (getRandom() - 0.5) * 300,
           vx: 0,
           vy: 0,
           isCurrentUser: false,
@@ -249,10 +294,11 @@ function simulateForces(
         let dy = result[b].y - result[a].y;
         let dist = Math.sqrt(dx * dx + dy * dy);
 
-        // If nodes are too close, add random jitter to separate them
+        // If nodes are too close, add deterministic jitter to separate them
         if (dist < 1) {
-          dx = (Math.random() - 0.5) * 10;
-          dy = (Math.random() - 0.5) * 10;
+          // Use node indices for deterministic offset
+          dx = ((a * 7 + b * 13) % 10 - 5);
+          dy = ((a * 11 + b * 3) % 10 - 5);
           dist = Math.sqrt(dx * dx + dy * dy);
         }
 
@@ -331,9 +377,12 @@ function simulateForces(
 export function TrustGraph({
   userDoc,
   externalDocs = new Map(),
+  trustedUserProfiles = {},
   width = '100%',
   height = 400,
   onNodeClick,
+  showLegend = true,
+  showStats = true,
 }: TrustGraphProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height });
@@ -361,7 +410,7 @@ export function TrustGraph({
 
   // Build and layout graph
   const { nodes, edges } = useMemo(() => {
-    const graph = buildGraph(userDoc, externalDocs);
+    const graph = buildGraph(userDoc, externalDocs, trustedUserProfiles);
     const layoutedNodes = simulateForces(
       graph.nodes,
       graph.edges,
@@ -370,22 +419,12 @@ export function TrustGraph({
       200  // More iterations for better convergence
     );
     return { nodes: layoutedNodes, edges: graph.edges };
-  }, [userDoc, externalDocs, dimensions.width, dimensions.height]);
+  }, [userDoc, externalDocs, trustedUserProfiles, dimensions.width, dimensions.height]);
 
   const handleNodeClick = useCallback((did: string) => {
     setSelectedNode(did);
     onNodeClick?.(did);
   }, [onNodeClick]);
-
-  // Get node color based on trust level
-  const getNodeColor = (node: TrustNode) => {
-    if (node.isCurrentUser) return '#22c55e'; // green-500
-    switch (node.trustLevel) {
-      case 'direct': return '#3b82f6'; // blue-500
-      case 'indirect': return '#a855f7'; // purple-500
-      default: return '#6b7280'; // gray-500
-    }
-  };
 
   // Get edge color based on level
   const getEdgeColor = (edge: TrustEdge) => {
@@ -410,46 +449,30 @@ export function TrustGraph({
 
   return (
     <div className="relative">
-      {/* Legend */}
-      <div className="absolute top-2 right-2 bg-base-300/90 rounded-lg p-2 text-xs space-y-1 z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-green-500" />
-          <span>Du (Zentrum)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-blue-500" />
-          <span>Direkte Verbindung</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full bg-purple-500" />
-          <span>2. Grad</span>
-        </div>
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-base-100">
+      {/* Compact Legend - only line types */}
+      {showLegend && (
+      <div className="absolute top-2 right-2 bg-base-300/90 rounded-lg px-2 py-1.5 text-xs z-10 flex gap-3">
+        <div className="flex items-center gap-1">
           <div className="w-4 h-0.5 bg-green-500" />
           <span>Verified</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <div className="w-4 h-0.5 bg-amber-500" />
           <span>Endorsed</span>
         </div>
-        <div className="flex items-center gap-2">
-          <svg width="16" height="10" className="text-gray-400">
-            <line x1="0" y1="5" x2="12" y2="5" stroke="currentColor" strokeWidth="2" />
-            <polygon points="16,5 10,2 10,8" fill="currentColor" />
-          </svg>
-          <span>Einseitig</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <svg width="16" height="10" className="text-gray-400">
-            <line x1="4" y1="5" x2="12" y2="5" stroke="currentColor" strokeWidth="2" />
-            <polygon points="0,5 6,2 6,8" fill="currentColor" />
-            <polygon points="16,5 10,2 10,8" fill="currentColor" />
+        <div className="flex items-center gap-1">
+          <svg width="12" height="8" className="text-base-content/50">
+            <line x1="4" y1="4" x2="8" y2="4" stroke="currentColor" strokeWidth="1.5" />
+            <polygon points="0,4 4,2 4,6" fill="currentColor" />
+            <polygon points="12,4 8,2 8,6" fill="currentColor" />
           </svg>
           <span>Gegenseitig</span>
         </div>
       </div>
+      )}
 
       {/* Stats */}
+      {showStats && (
       <div className="absolute top-2 left-2 bg-base-300/90 rounded-lg p-2 text-xs z-10">
         <div><span className="text-gray-500">Knoten:</span> {nodes.length}</div>
         <div><span className="text-gray-500">Verbindungen:</span> {edges.length}</div>
@@ -458,6 +481,7 @@ export function TrustGraph({
           {edges.filter(e => e.bidirectional).length}
         </div>
       </div>
+      )}
 
       <svg
         ref={svgRef}
@@ -563,52 +587,57 @@ export function TrustGraph({
               {/* Glow effect for selected/hovered */}
               {(isHovered || isSelected) && (
                 <circle
-                  r={radius + 6}
+                  r={radius + 4}
                   fill="none"
-                  stroke={getNodeColor(node)}
+                  stroke={node.isCurrentUser ? '#22c55e' : '#3b82f6'}
                   strokeWidth={2}
-                  strokeOpacity={0.5}
+                  strokeOpacity={0.6}
                 />
               )}
 
-              {/* Main circle */}
+              {/* Border circle */}
               <circle
                 r={radius}
-                fill={getNodeColor(node)}
-                fillOpacity={0.9}
-                stroke={isSelected ? '#fff' : 'transparent'}
+                fill="transparent"
+                stroke={isSelected ? '#fff' : (node.isCurrentUser ? '#22c55e' : '#3b82f6')}
                 strokeWidth={2}
               />
 
-              {/* Avatar initial */}
-              <text
-                textAnchor="middle"
-                dy="0.35em"
-                fill="white"
-                fontSize={node.isCurrentUser ? 14 : 12}
-                fontWeight="bold"
+              {/* Avatar using foreignObject for React component support */}
+              <foreignObject
+                x={-radius}
+                y={-radius}
+                width={radius * 2}
+                height={radius * 2}
+                style={{ overflow: 'hidden', borderRadius: '50%' }}
               >
-                {node.label.charAt(0).toUpperCase()}
-              </text>
+                <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden' }}>
+                  <UserAvatar
+                    did={node.id}
+                    avatarUrl={node.avatarUrl}
+                    size={radius * 2}
+                  />
+                </div>
+              </foreignObject>
 
               {/* Label (shown on hover) */}
               {isHovered && (
                 <g>
                   <rect
-                    x={-60}
-                    y={radius + 8}
-                    width={120}
-                    height={24}
+                    x={-55}
+                    y={radius + 6}
+                    width={110}
+                    height={22}
                     rx={4}
-                    fill="rgba(0,0,0,0.8)"
+                    fill="rgba(0,0,0,0.85)"
                   />
                   <text
                     textAnchor="middle"
-                    y={radius + 24}
+                    y={radius + 21}
                     fill="white"
                     fontSize={11}
                   >
-                    {node.label.length > 18 ? node.label.substring(0, 18) + '...' : node.label}
+                    {node.label.length > 16 ? node.label.substring(0, 16) + '...' : node.label}
                   </text>
                 </g>
               )}

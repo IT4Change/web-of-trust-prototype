@@ -73,7 +73,9 @@ export {
 } from './hooks/useDocumentChanges';
 
 // Components exports
-export { AppShell, type AppShellProps, type AppShellChildProps, type WorkspaceLoadingState } from './components/AppShell';
+export { AppShell, type AppShellProps, type AppShellChildProps, type WorkspaceLoadingState, type OnboardingProps, type ContentState } from './components/AppShell';
+export { StartContent, type StartContentProps } from './components/StartContent';
+export { OnboardingScreen, type OnboardingScreenProps } from './components/OnboardingScreen';
 export { AppNavbar, type AppNavbarProps } from './components/AppNavbar';
 export {
   WorkspaceSwitcher,
@@ -96,6 +98,7 @@ export { ClickableUserName } from './components/ClickableUserName';
 export { Toast } from './components/Toast';
 export { NewWorkspaceModal, type NewWorkspaceModalProps } from './components/NewWorkspaceModal';
 export { AppLayout, type AppLayoutProps } from './components/AppLayout';
+export { JoinWorkspaceDialog, type JoinWorkspaceDialogProps } from './components/JoinWorkspaceDialog';
 export { Confetti } from './components/Confetti';
 export { DebugDashboard } from './components/DebugDashboard';
 export { TrustGraph, type TrustGraphProps } from './components/TrustGraph';

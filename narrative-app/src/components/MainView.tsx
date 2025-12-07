@@ -1,6 +1,6 @@
 import type { DocHandle, AutomergeUrl, DocumentId } from '@automerge/automerge-repo';
 import { useDocHandle, useDocument } from '@automerge/automerge-repo-react-hooks';
-import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState } from 'narrative-ui';
+import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState, type ContentState } from 'narrative-ui';
 import { useOpinionGraph } from '../hooks/useOpinionGraph';
 import type { OpinionGraphDoc } from '../schema/opinion-graph';
 import { AssumptionList } from './AssumptionList';
@@ -25,6 +25,15 @@ interface MainViewProps {
   workspaceLoading?: WorkspaceLoadingState;
   // Debug Dashboard toggle (from AppShell)
   onToggleDebugDashboard: () => void;
+  // Content state from AppShell
+  contentState: ContentState;
+  // Callbacks for content state transitions
+  onJoinWorkspace: (docUrl: string) => void;
+  onCancelLoading: () => void;
+  // Callback to go to start screen (from workspace switcher)
+  onGoToStart?: () => void;
+  // Callback to switch workspace without page reload
+  onSwitchWorkspace?: (workspaceId: string) => void;
 }
 
 /**
@@ -43,6 +52,11 @@ export function MainView({
   userDocHandle: _userDocHandle, // Available for direct mutations if needed
   workspaceLoading,
   onToggleDebugDashboard,
+  contentState,
+  onJoinWorkspace,
+  onCancelLoading,
+  onGoToStart,
+  onSwitchWorkspace,
 }: MainViewProps) {
   // In automerge-repo v2.x, use useDocHandle hook instead of repo.find()
   // Only call hooks when documentId is available
@@ -58,8 +72,6 @@ export function MainView({
   const [showImportModal, setShowImportModal] = useState(false);
   const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
   const [webOfTrustFilter, setWebOfTrustFilter] = useState(false);
-
-  const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
 
   // Debug state is automatically updated via useAppContext in AppLayout
 
@@ -94,7 +106,6 @@ export function MainView({
       appTitle="Narrative"
       workspaceName="Narrative Board"
       hideWorkspaceSwitcher={false}
-      logoUrl={logoUrl}
       onResetIdentity={onResetIdentity}
       onCreateWorkspace={onNewDocument}
       onUpdateIdentityInDoc={narrative?.updateIdentity}
@@ -103,6 +114,12 @@ export function MainView({
       userDocUrl={userDocHandle?.url}
       onToggleDebugDashboard={onToggleDebugDashboard}
       workspaceLoading={workspaceLoading}
+      contentState={contentState}
+      onJoinWorkspace={onJoinWorkspace}
+      onCancelLoading={onCancelLoading}
+      identity={{ did: currentUserDid, displayName }}
+      onGoToStart={onGoToStart}
+      onSwitchWorkspace={onSwitchWorkspace}
     >
       {(ctx: AppContextValue) => {
         // Wrapper functions that filter by hidden users

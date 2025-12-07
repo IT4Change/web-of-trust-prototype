@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { DocHandle, AutomergeUrl, DocumentId } from '@automerge/automerge-repo';
 import { useDocument } from '@automerge/automerge-repo-react-hooks';
-import { AppLayout, type AppContextValue, type UserDocument, type ProfileAction, type WorkspaceLoadingState } from 'narrative-ui';
+import { AppLayout, type AppContextValue, type UserDocument, type ProfileAction, type WorkspaceLoadingState, type ContentState } from 'narrative-ui';
 import { useMapDocument } from '../hooks/useMapDocument';
 import { MapContent } from './MapContent';
 
@@ -20,6 +20,15 @@ interface MapViewProps {
   workspaceLoading?: WorkspaceLoadingState;
   // Debug Dashboard toggle (from AppShell)
   onToggleDebugDashboard: () => void;
+  // Content state from AppShell
+  contentState: ContentState;
+  // Callbacks for content state transitions
+  onJoinWorkspace: (docUrl: string) => void;
+  onCancelLoading: () => void;
+  // Callback to go to start screen (from workspace switcher)
+  onGoToStart?: () => void;
+  // Callback to switch workspace without page reload
+  onSwitchWorkspace?: (workspaceId: string) => void;
 }
 
 /**
@@ -38,6 +47,11 @@ export function MapView({
   userDocHandle,
   workspaceLoading,
   onToggleDebugDashboard,
+  contentState,
+  onJoinWorkspace,
+  onCancelLoading,
+  onGoToStart,
+  onSwitchWorkspace,
 }: MapViewProps) {
   // Hook now handles docHandle internally using useDocHandle
   const mapData = useMapDocument(
@@ -53,8 +67,6 @@ export function MapView({
 
   // State for placing marker mode (lifted from MapContent for profile actions)
   const [isPlacingMarker, setIsPlacingMarker] = useState(false);
-
-  const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
 
   // Map-specific profile actions
   const getProfileActions = (profileDid: string, closeProfile: () => void): ProfileAction[] => {
@@ -103,7 +115,6 @@ export function MapView({
       appTitle="Narrative Map"
       workspaceName="Map"
       hideWorkspaceSwitcher={false}
-      logoUrl={logoUrl}
       onResetIdentity={onResetIdentity}
       onCreateWorkspace={onNewDocument}
       onUpdateIdentityInDoc={mapData?.updateIdentity}
@@ -113,6 +124,12 @@ export function MapView({
       profileActions={getProfileActions}
       onToggleDebugDashboard={onToggleDebugDashboard}
       workspaceLoading={workspaceLoading}
+      contentState={contentState}
+      onJoinWorkspace={onJoinWorkspace}
+      onCancelLoading={onCancelLoading}
+      identity={{ did: currentUserDid, displayName }}
+      onGoToStart={onGoToStart}
+      onSwitchWorkspace={onSwitchWorkspace}
     >
       {(ctx: AppContextValue) => (
         <div className="flex-1 relative overflow-hidden">

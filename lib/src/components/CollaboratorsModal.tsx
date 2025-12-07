@@ -51,7 +51,8 @@ async function verifyAttestationSignature(attestation: TrustAttestation): Promis
 interface CollaboratorsModalProps<TData = unknown> {
   isOpen: boolean;
   onClose: () => void;
-  doc: BaseDocument<TData>;
+  /** Workspace document (optional - can work without it using only userDoc) */
+  doc?: BaseDocument<TData> | null;
   currentUserDid: string;
   hiddenUserDids: Set<string>;
   onToggleUserVisibility: (did: string) => void;
@@ -138,8 +139,8 @@ export function CollaboratorsModal<TData = unknown>({
     .filter(did => did !== currentUserDid) // Exclude self
     .map(did => {
       const trustedProfile = trustedUserProfiles[did];
-      const workspaceProfile = doc.identities[did];
-      const lookupProfile = doc.identityLookup?.[did];
+      const workspaceProfile = doc?.identities?.[did];
+      const lookupProfile = doc?.identityLookup?.[did];
       return {
         did,
         displayName: trustedProfile?.displayName || workspaceProfile?.displayName || lookupProfile?.displayName || getDefaultDisplayName(did),

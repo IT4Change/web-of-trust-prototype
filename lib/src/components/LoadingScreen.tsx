@@ -169,6 +169,8 @@ export interface WorkspaceLoadingContentProps {
   onCreateNew?: () => void;
   /** Time after which to show "create new" option (ms) */
   showCreateNewAfter?: number;
+  /** Callback to cancel loading and return to start */
+  onCancel?: () => void;
 }
 
 /**
@@ -183,6 +185,7 @@ export function WorkspaceLoadingContent({
   elapsedTime = 0,
   onCreateNew,
   showCreateNewAfter = 20000,
+  onCancel,
 }: WorkspaceLoadingContentProps) {
   const [dots, setDots] = useState('');
   const [showCreateNew, setShowCreateNew] = useState(false);
@@ -292,6 +295,16 @@ export function WorkspaceLoadingContent({
             </div>
           )}
         </div>
+
+        {/* Cancel button */}
+        {onCancel && (
+          <button
+            className="btn btn-ghost btn-sm mt-4"
+            onClick={onCancel}
+          >
+            Abbrechen
+          </button>
+        )}
 
         {/* Hint text below card */}
         <p className="text-xs text-base-content/40 mt-4">

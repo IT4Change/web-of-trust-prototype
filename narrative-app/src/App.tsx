@@ -1,4 +1,4 @@
-import { useRepository, AppShell } from 'narrative-ui';
+import { useRepository, AppShell, OnboardingScreen } from 'narrative-ui';
 import { createEmptyOpinionGraphDoc } from './schema/opinion-graph';
 import { MainView } from './components/MainView';
 
@@ -26,6 +26,8 @@ function App() {
       createEmptyDocument={createEmptyOpinionGraphDoc}
       storagePrefix="narrative"
       enableUserDocument
+      onboardingComponent={OnboardingScreen}
+      appTitle="Narrative"
     >
       {(props) => <MainView {...props} />}
     </AppShell>

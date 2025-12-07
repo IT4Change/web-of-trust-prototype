@@ -3,6 +3,7 @@ import {
   createAssumption,
   ensureOnBoard,
   createNewBoard,
+  createWorkspaceFromStart,
 } from './helpers';
 
 /**
@@ -54,15 +55,13 @@ test.describe('URL Sharing', () => {
     await expect(page.getByText(assumptionText)).toBeVisible({ timeout: 10000 });
   });
 
-  // TODO: Fix workspace creation in E2E - works manually but not in automated test
-  test.skip('should support multiple documents', async ({ page }) => {
+  test('should support multiple documents', async ({ page }) => {
     // Create first document
     await ensureOnBoard(page);
     await createAssumption(page, 'First document assumption');
     const firstDocUrl = page.url();
 
     // Create second document via workspace switcher
-    // createNewBoard waits for URL to change
     await createNewBoard(page);
 
     const secondDocUrl = page.url();
@@ -73,15 +72,28 @@ test.describe('URL Sharing', () => {
     // Create assumption in second document
     await createAssumption(page, 'Second document assumption');
 
-    // Navigate back to first document
+    // Navigate back to first document via workspace switcher or URL
     await page.goto(firstDocUrl);
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(1000);
+
+    // Handle join dialog if present (when returning to a workspace)
+    const joinButton = page.getByRole('button', { name: /beitreten/i });
+    if (await joinButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await joinButton.click();
+      await page.waitForTimeout(500);
+    }
+
+    // Wait for workspace to be ready
+    await expect(page.getByRole('button', { name: /new assumption/i }).first()).toBeVisible({ timeout: 10000 });
 
     // Should see first document content
     await expect(page.getByText('First document assumption')).toBeVisible({
       timeout: 10000,
     });
+
+    // Should NOT see second document content
+    await expect(page.getByText('Second document assumption')).not.toBeVisible();
   });
 
   test('should share document URL between tabs', async ({ context }) => {
@@ -93,11 +105,20 @@ test.describe('URL Sharing', () => {
       // Page 1: Create a document
       await page1.goto('/');
       await page1.waitForLoadState('networkidle');
+      await page1.waitForTimeout(1000);
 
       // Ensure we have a document
       if (!page1.url().includes('#doc=')) {
-        await createNewBoard(page1);
+        // Try Start screen first (new behavior)
+        const created = await createWorkspaceFromStart(page1);
+        if (!created) {
+          // Fallback to workspace switcher
+          await createNewBoard(page1);
+        }
       }
+
+      // Wait for workspace to be ready
+      await expect(page1.getByRole('button', { name: /new assumption/i }).first()).toBeVisible({ timeout: 15000 });
 
       await createAssumption(page1, 'Shared document test');
       const shareUrl = page1.url();
@@ -106,6 +127,16 @@ test.describe('URL Sharing', () => {
       await page2.goto(shareUrl);
       await page2.waitForLoadState('networkidle');
       await page2.waitForTimeout(1000); // Wait for BroadcastChannel sync
+
+      // Handle join dialog if present
+      const joinButton = page2.getByRole('button', { name: /beitreten/i });
+      if (await joinButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await joinButton.click();
+        await page2.waitForTimeout(500);
+      }
+
+      // Wait for workspace to be ready in page2
+      await expect(page2.getByRole('button', { name: /new assumption/i }).first()).toBeVisible({ timeout: 10000 });
 
       // Should see the same content
       await expect(page2.getByText('Shared document test')).toBeVisible({

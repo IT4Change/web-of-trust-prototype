@@ -14,22 +14,29 @@ export interface WorkspaceInfo {
 interface WorkspaceSwitcherProps {
   currentWorkspace: WorkspaceInfo | null;
   workspaces: WorkspaceInfo[];
-  logoUrl: string;
   onSwitchWorkspace: (workspaceId: string) => void;
   onNewWorkspace: () => void;
   /** Callback to open workspace modal (for current workspace) */
   onOpenWorkspaceModal?: () => void;
+  /** Whether to show the "Start" entry for users without workspace */
+  showStartEntry?: boolean;
+  /** Whether currently in start state (no workspace loaded) */
+  isStart?: boolean;
+  /** Callback to go to start screen */
+  onGoToStart?: () => void;
 }
 
 export function WorkspaceSwitcher({
   currentWorkspace,
   workspaces,
-  logoUrl,
   onSwitchWorkspace,
   onNewWorkspace,
   onOpenWorkspaceModal,
+  showStartEntry = false,
+  isStart = false,
+  onGoToStart,
 }: WorkspaceSwitcherProps) {
-  const displayName = currentWorkspace?.name || 'Workspace';
+  const displayName = isStart ? 'Start' : (currentWorkspace?.name || 'Workspace');
 
   return (
     <div className="dropdown">
@@ -38,7 +45,16 @@ export function WorkspaceSwitcher({
         role="button"
         className="btn btn-ghost text-xl flex items-center gap-2"
       >
-        {currentWorkspace?.avatar ? (
+        {/* Workspace/Start Icon - always show space icon, never logo */}
+        {isStart ? (
+          // Start state: Home icon
+          <div className="w-10 h-10 rounded-lg bg-success/20 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+          </div>
+        ) : currentWorkspace?.avatar ? (
+          // Workspace with custom avatar
           <div className="w-10 h-10 rounded-lg overflow-hidden">
             <img
               src={currentWorkspace.avatar}
@@ -47,7 +63,12 @@ export function WorkspaceSwitcher({
             />
           </div>
         ) : (
-          <img src={logoUrl} alt="Narrative" className="h-12 pb-2 text-current" />
+          // Workspace without avatar: show first letter
+          <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+            <span className="text-xl font-bold text-primary">
+              {(currentWorkspace?.name || 'W').charAt(0).toUpperCase()}
+            </span>
+          </div>
         )}
         <span className="hidden sm:inline max-w-[150px] truncate">{displayName}</span>
         <svg
@@ -70,8 +91,27 @@ export function WorkspaceSwitcher({
         tabIndex={0}
         className="dropdown-content menu bg-base-100 rounded-box z-[2000] mt-4 w-64 p-2 shadow-lg"
       >
+        {/* Start entry - shown when in start state */}
+        {isStart && (
+          <>
+            <li className="menu-title text-xs opacity-50 px-2 pt-1">
+              Aktueller Bereich
+            </li>
+            <li>
+              <a className="flex items-center gap-2 bg-base-200">
+                <div className="w-8 h-8 rounded bg-success/20 flex items-center justify-center flex-shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                </div>
+                <span className="truncate font-medium flex-1">Start</span>
+              </a>
+            </li>
+          </>
+        )}
+
         {/* Current workspace - click opens modal */}
-        {currentWorkspace && (
+        {!isStart && currentWorkspace && (
           <>
             <li className="menu-title text-xs opacity-50 px-2 pt-1">
               Aktueller Workspace
@@ -141,6 +181,26 @@ export function WorkspaceSwitcher({
                   </a>
                 </li>
               ))}
+          </>
+        )}
+
+        {/* Go to Start option - when in a workspace and showStartEntry is true */}
+        {showStartEntry && !isStart && onGoToStart && (
+          <>
+            <div className="divider my-1"></div>
+            <li>
+              <a
+                className="flex items-center gap-3"
+                onClick={onGoToStart}
+              >
+                <div className="w-8 h-8 rounded bg-success/20 flex items-center justify-center flex-shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  </svg>
+                </div>
+                <span>Start</span>
+              </a>
+            </li>
           </>
         )}
 

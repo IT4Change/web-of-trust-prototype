@@ -1,5 +1,41 @@
 import { test, expect } from '@playwright/test';
-import { createAssumption } from './helpers';
+import { createAssumption, createWorkspaceFromStart } from './helpers';
+
+/**
+ * Helper function to ensure a workspace is created in a tab
+ * Handles both the new Start screen and legacy behaviors
+ */
+async function ensureWorkspaceInTab(page: import('@playwright/test').Page) {
+  await page.goto('/');
+  await page.waitForLoadState('networkidle');
+  await page.waitForTimeout(1000);
+
+  const url = page.url();
+  if (!url.includes('#doc=')) {
+    // Try to create workspace from Start screen (new behavior)
+    const created = await createWorkspaceFromStart(page);
+    if (!created) {
+      // Fallback to old hamburger menu approach
+      const hamburgerButton = page.locator(
+        '.dropdown-top .btn[role="button"]'
+      );
+      if (await hamburgerButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await hamburgerButton.click();
+        await page.waitForTimeout(300);
+        const newBoardButton = page.getByText('New Board', { exact: true });
+        if (await newBoardButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await newBoardButton.click();
+          await page.waitForURL(/.*#doc=.*/);
+          await page.waitForTimeout(500);
+        }
+      }
+    }
+  }
+
+  // Wait for workspace to be ready
+  const newAssumptionButton = page.getByRole('button', { name: /new assumption/i }).first();
+  await expect(newAssumptionButton).toBeVisible({ timeout: 15000 });
+}
 
 /**
  * E2E Tests for multi-tab collaboration
@@ -15,26 +51,7 @@ test.describe('Multi-Tab Collaboration', () => {
 
     try {
       // Tab 1: Create a new board
-      await page1.goto('/');
-      await page1.waitForLoadState('networkidle');
-
-      // Check if we need to create a new board
-      const url1 = page1.url();
-      if (!url1.includes('#doc=')) {
-        const hamburgerButton = page1.locator(
-          '.dropdown-top .btn[role="button"]'
-        );
-        if (await hamburgerButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await hamburgerButton.click();
-          await page1.waitForTimeout(300);
-          const newBoardButton = page1.getByText('New Board', { exact: true });
-          if (await newBoardButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await newBoardButton.click();
-            await page1.waitForURL(/.*#doc=.*/);
-            await page1.waitForTimeout(500);
-          }
-        }
-      }
+      await ensureWorkspaceInTab(page1);
 
       // Get the document URL
       const docUrl = page1.url();
@@ -43,6 +60,17 @@ test.describe('Multi-Tab Collaboration', () => {
       await page2.goto(docUrl);
       await page2.waitForLoadState('networkidle');
       await page2.waitForTimeout(1000); // Wait for BroadcastChannel connection
+
+      // Wait for Tab 2 to be ready (may need to confirm join)
+      // Check for join dialog and confirm if present
+      const joinButton = page2.getByRole('button', { name: /beitreten/i });
+      if (await joinButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await joinButton.click();
+        await page2.waitForTimeout(500);
+      }
+
+      // Wait for Tab 2 to show the workspace content
+      await expect(page2.getByRole('button', { name: /new assumption/i }).first()).toBeVisible({ timeout: 10000 });
 
       // Tab 1: Create an assumption
       const assumptionText = 'This should sync to tab 2 via BroadcastChannel';
@@ -67,25 +95,7 @@ test.describe('Multi-Tab Collaboration', () => {
 
     try {
       // Tab 1: Create board
-      await page1.goto('/');
-      await page1.waitForLoadState('networkidle');
-
-      const url1 = page1.url();
-      if (!url1.includes('#doc=')) {
-        const hamburgerButton = page1.locator(
-          '.dropdown-top .btn[role="button"]'
-        );
-        if (await hamburgerButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await hamburgerButton.click();
-          await page1.waitForTimeout(300);
-          const newBoardButton = page1.getByText('New Board', { exact: true });
-          if (await newBoardButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await newBoardButton.click();
-            await page1.waitForURL(/.*#doc=.*/);
-            await page1.waitForTimeout(500);
-          }
-        }
-      }
+      await ensureWorkspaceInTab(page1);
 
       await createAssumption(page1, 'Assumption from tab 1');
 
@@ -94,6 +104,16 @@ test.describe('Multi-Tab Collaboration', () => {
       await page2.goto(docUrl);
       await page2.waitForLoadState('networkidle');
       await page2.waitForTimeout(1000);
+
+      // Handle join dialog if present
+      const joinButton = page2.getByRole('button', { name: /beitreten/i });
+      if (await joinButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await joinButton.click();
+        await page2.waitForTimeout(500);
+      }
+
+      // Wait for workspace to be ready
+      await expect(page2.getByRole('button', { name: /new assumption/i }).first()).toBeVisible({ timeout: 10000 });
 
       // Tab 2: Should see tab 1's assumption
       await expect(page2.getByText('Assumption from tab 1')).toBeVisible({
@@ -122,31 +142,23 @@ test.describe('Multi-Tab Collaboration', () => {
     const page2 = await context.newPage();
 
     try {
-      // Setup: Create board and open in both tabs
-      await page1.goto('/');
-      await page1.waitForLoadState('networkidle');
-
-      const url1 = page1.url();
-      if (!url1.includes('#doc=')) {
-        const hamburgerButton = page1.locator(
-          '.dropdown-top .btn[role="button"]'
-        );
-        if (await hamburgerButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await hamburgerButton.click();
-          await page1.waitForTimeout(300);
-          const newBoardButton = page1.getByText('New Board', { exact: true });
-          if (await newBoardButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await newBoardButton.click();
-            await page1.waitForURL(/.*#doc=.*/);
-            await page1.waitForTimeout(500);
-          }
-        }
-      }
+      // Setup: Create board
+      await ensureWorkspaceInTab(page1);
 
       const docUrl = page1.url();
       await page2.goto(docUrl);
       await page2.waitForLoadState('networkidle');
       await page2.waitForTimeout(1000);
+
+      // Handle join dialog if present
+      const joinButton = page2.getByRole('button', { name: /beitreten/i });
+      if (await joinButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await joinButton.click();
+        await page2.waitForTimeout(500);
+      }
+
+      // Wait for workspace to be ready in Tab 2
+      await expect(page2.getByRole('button', { name: /new assumption/i }).first()).toBeVisible({ timeout: 10000 });
 
       // Both tabs create assumptions at roughly the same time
       await Promise.all([

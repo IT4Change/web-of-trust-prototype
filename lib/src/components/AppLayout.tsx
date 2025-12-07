@@ -9,7 +9,7 @@
  * Apps only need to provide their content via children render prop.
  */
 
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useMemo, type ReactNode } from 'react';
 import type { DocHandle } from '@automerge/automerge-repo';
 import { useRepo } from '@automerge/automerge-repo-react-hooks';
 import { useAppContext, type AppContextValue } from '../hooks/useAppContext';
@@ -21,11 +21,13 @@ import { TrustReciprocityModal } from './TrustReciprocityModal';
 import { NewWorkspaceModal } from './NewWorkspaceModal';
 import { UserProfileModal, type ProfileAction } from './UserProfileModal';
 import { QRScannerModal } from './QRScannerModal';
+import { JoinWorkspaceDialog } from './JoinWorkspaceDialog';
 import { Toast } from './Toast';
 import { Confetti } from './Confetti';
 import { WorkspaceLoadingContent } from './LoadingScreen';
-import { exportIdentityToFile, importIdentityFromFile } from '../utils/storage';
-import type { WorkspaceLoadingState } from './AppShell';
+import { StartContent } from './StartContent';
+import { exportIdentityToFile, importIdentityFromFile, loadSharedIdentity } from '../utils/storage';
+import type { WorkspaceLoadingState, ContentState } from './AppShell';
 
 export interface AppLayoutProps<TDoc extends BaseDocument<unknown>> {
   /** The Automerge document */
@@ -48,9 +50,6 @@ export interface AppLayoutProps<TDoc extends BaseDocument<unknown>> {
 
   /** Whether to hide the workspace switcher (simple single-doc apps) */
   hideWorkspaceSwitcher?: boolean;
-
-  /** Logo URL for workspace switcher */
-  logoUrl?: string;
 
   /** Callback when identity needs to be reset */
   onResetIdentity: () => void;
@@ -118,6 +117,40 @@ export interface AppLayoutProps<TDoc extends BaseDocument<unknown>> {
    * When present, shows loading UI in content area instead of children
    */
   workspaceLoading?: WorkspaceLoadingState;
+
+  /**
+   * Content state from AppShell: 'start', 'loading', or 'ready'
+   * Determines what content to show in the main area
+   */
+  contentState: ContentState;
+
+  /**
+   * Callback when user wants to join a workspace (for start state)
+   */
+  onJoinWorkspace: (docUrl: string) => void;
+
+  /**
+   * Callback to cancel loading and return to start state
+   */
+  onCancelLoading: () => void;
+
+  /**
+   * Current user's identity (for start content display)
+   */
+  identity?: {
+    did: string;
+    displayName?: string;
+  };
+
+  /**
+   * Callback to go to start screen (from workspace switcher)
+   */
+  onGoToStart?: () => void;
+
+  /**
+   * Callback to switch workspace without page reload (from AppShell)
+   */
+  onSwitchWorkspace?: (workspaceId: string) => void;
 }
 
 /**
@@ -168,7 +201,6 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
   appTitle,
   workspaceName,
   hideWorkspaceSwitcher = false,
-  logoUrl = '/logo.svg',
   onResetIdentity,
   onCreateWorkspace,
   onUpdateIdentityInDoc,
@@ -183,6 +215,12 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
   hideProfileTrustActions = false,
   onToggleDebugDashboard,
   workspaceLoading,
+  contentState,
+  onJoinWorkspace,
+  onCancelLoading,
+  identity,
+  onGoToStart,
+  onSwitchWorkspace,
 }: AppLayoutProps<TDoc>) {
   // Get repo for bidirectional trust sync
   const repo = useRepo();
@@ -193,6 +231,78 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
   // QR Scanner state for verification
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
+  // Join workspace confirmation state
+  // null = no pending join, 'pending' = waiting for user confirmation, 'joined' = user has joined
+  const [joinState, setJoinState] = useState<'pending' | 'joined' | null>(null);
+
+  // Check if user is already a member of this workspace
+  const isUserMember = useMemo(() => {
+    if (!doc || !currentUserDid) return false;
+    return Boolean(doc.identities?.[currentUserDid]);
+  }, [doc, currentUserDid]);
+
+  // Get workspace info for join dialog
+  const workspaceInfo = useMemo(() => {
+    if (!doc) return null;
+    return {
+      name: (doc as BaseDocument<unknown>).context?.name || workspaceName || 'Workspace',
+      avatar: (doc as BaseDocument<unknown>).context?.avatar,
+      memberDids: Object.keys(doc.identities || {}),
+    };
+  }, [doc, workspaceName]);
+
+  // When doc becomes ready and user is NOT a member, show join dialog
+  useEffect(() => {
+    if (contentState === 'ready' && doc && !isUserMember && joinState === null) {
+      console.log('[AppLayout] User is not a member of this workspace, showing join dialog');
+      setJoinState('pending');
+    }
+  }, [contentState, doc, isUserMember, joinState]);
+
+  // Reset join state when document changes
+  useEffect(() => {
+    setJoinState(null);
+  }, [documentId]);
+
+  // Handle joining the workspace
+  const handleConfirmJoin = useCallback(() => {
+    if (!docHandle || !currentUserDid) return;
+
+    // Load user's identity to get display name and avatar
+    const storedIdentity = loadSharedIdentity();
+    const displayName = storedIdentity?.displayName || userDoc?.profile?.displayName;
+    const avatarUrl = userDoc?.profile?.avatarUrl;
+
+    console.log('[AppLayout] User confirmed join, writing identity to workspace');
+
+    // Write identity to workspace document
+    // Note: Automerge cannot store undefined values, so we only set properties that have values
+    docHandle.change((d: BaseDocument<unknown>) => {
+      if (!d.identities) {
+        d.identities = {};
+      }
+      // Create empty profile object first
+      d.identities[currentUserDid] = {};
+      // Only set displayName if it has a value
+      if (displayName) {
+        d.identities[currentUserDid].displayName = displayName;
+      }
+      // Only set avatarUrl if it has a value
+      if (avatarUrl) {
+        d.identities[currentUserDid].avatarUrl = avatarUrl;
+      }
+    });
+
+    setJoinState('joined');
+  }, [docHandle, currentUserDid, userDoc]);
+
+  // Handle declining to join
+  const handleDeclineJoin = useCallback(() => {
+    console.log('[AppLayout] User declined join, returning to start');
+    setJoinState(null);
+    onCancelLoading();
+  }, [onCancelLoading]);
+
   // Centralized app context - handles ALL standard functionality
   const ctx = useAppContext({
     doc,
@@ -202,7 +312,6 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
     appTitle,
     workspaceName: workspaceName ?? (doc as BaseDocument<unknown>)?.context?.name ?? 'Workspace',
     hideWorkspaceSwitcher,
-    logoUrl,
     onResetIdentity,
     onCreateWorkspace,
     onUpdateIdentityInDoc,
@@ -210,6 +319,7 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
     userDoc,
     userDocUrl,
     repo,
+    onSwitchWorkspace,
   });
 
   // Identity management handlers for profile modal
@@ -230,63 +340,20 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
     setIsScannerOpen(true);
   }, [closeProfile]);
 
-  // Show full loading screen only during initial identity load (before AppShell renders children)
-  // Once we have workspaceLoading, we show the shell with loading content
-  if (!doc || !docHandle) {
-    // If we have workspaceLoading state, show shell with loading content
-    if (workspaceLoading) {
-      return (
-        <div className="w-screen h-dvh bg-base-200 flex flex-col overflow-hidden">
-          {/* Minimal Navbar while loading */}
-          <div className="navbar bg-base-100 shadow-lg z-[1100] flex-shrink-0">
-            <div className="navbar-start">
-              <div className="flex items-center gap-3 px-2">
-                <img src={logoUrl} alt="Logo" className="w-8 h-8" />
-                <span className="text-lg font-semibold text-base-content/50">
-                  Workspace wird geladen...
-                </span>
-              </div>
-            </div>
-            <div className="navbar-center" />
-            <div className="navbar-end gap-2">
-              {/* User avatar from UserDocument (available before workspace loads) */}
-              {userDoc && (
-                <div className="flex items-center gap-2 pr-2">
-                  <div className="w-10 h-10 rounded-full bg-base-300 overflow-hidden">
-                    {userDoc.profile?.avatarUrl ? (
-                      <img
-                        src={userDoc.profile.avatarUrl}
-                        alt="Avatar"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-base-content/50">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-6 w-6"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                          />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                  <span className="hidden lg:block font-medium text-base-content/70">
-                    {userDoc.profile?.displayName || 'Benutzer'}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Workspace Loading Content */}
+  // Render content based on contentState
+  const renderContent = () => {
+    switch (contentState) {
+      case 'start':
+        return (
+          <StartContent
+            onJoinWorkspace={onJoinWorkspace}
+            onCreateWorkspace={onCreateWorkspace}
+            identity={identity || { did: currentUserDid, displayName: userDoc?.profile?.displayName }}
+            appTitle={appTitle}
+          />
+        );
+      case 'loading':
+        return workspaceLoading ? (
           <WorkspaceLoadingContent
             documentId={workspaceLoading.documentId}
             attempt={workspaceLoading.attempt}
@@ -294,25 +361,49 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
             elapsedTime={workspaceLoading.elapsedTime}
             onCreateNew={workspaceLoading.onCreateNew}
             showCreateNewAfter={workspaceLoading.showCreateNewAfter}
+            onCancel={onCancelLoading}
           />
-        </div>
-      );
+        ) : (
+          <>{loadingComponent ?? <DefaultLoading />}</>
+        );
+      case 'ready':
+        if (!doc || !docHandle) {
+          return <>{loadingComponent ?? <DefaultLoading />}</>;
+        }
+        // If join is pending, show a placeholder content (dialog overlays it)
+        if (joinState === 'pending') {
+          return (
+            <div className="flex-1 flex items-center justify-center bg-base-200">
+              <div className="text-center">
+                <span className="loading loading-spinner loading-lg text-primary"></span>
+                <p className="mt-4 text-base-content/70">Workspace wird geladen...</p>
+              </div>
+            </div>
+          );
+        }
+        return children(ctx, docHandle);
     }
-    // No workspaceLoading state - show default loading
-    return <>{loadingComponent ?? <DefaultLoading />}</>;
-  }
+  };
+
+  // Determine if we're in start state for workspace switcher
+  const isStart = contentState === 'start';
 
   return (
     <div className="w-screen h-dvh bg-base-200 flex flex-col overflow-hidden">
-      {/* Navbar */}
+      {/* Full Navbar - always shown when navbarProps available */}
       {ctx.navbarProps && (
-        <AppNavbar {...ctx.navbarProps} onToggleDebugDashboard={onToggleDebugDashboard}>
+        <AppNavbar
+          {...ctx.navbarProps}
+          onToggleDebugDashboard={onToggleDebugDashboard}
+          isStart={isStart}
+          onGoToStart={onGoToStart}
+        >
           {navbarChildren}
         </AppNavbar>
       )}
 
-      {/* App Content */}
-      {children(ctx, docHandle)}
+      {/* Content Area */}
+      {renderContent()}
 
       {/* Standard Modals - all from context */}
       {ctx.trustReciprocityModalProps && (
@@ -351,7 +442,7 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
       )}
 
       {/* QR Scanner Modal for verification */}
-      {isScannerOpen && doc && (
+      {isScannerOpen && (
         <QRScannerModal
           isOpen={isScannerOpen}
           onClose={() => setIsScannerOpen(false)}
@@ -370,6 +461,20 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
         isActive={ctx.showConfetti}
         onComplete={ctx.clearConfetti}
       />
+
+      {/* Join Workspace Dialog - shown when user is not a member */}
+      {joinState === 'pending' && doc && workspaceInfo && (
+        <JoinWorkspaceDialog
+          isOpen={true}
+          doc={doc}
+          currentUserDid={currentUserDid}
+          workspaceName={workspaceInfo.name}
+          workspaceAvatar={workspaceInfo.avatar}
+          memberDids={workspaceInfo.memberDids}
+          onConfirm={handleConfirmJoin}
+          onDecline={handleDeclineJoin}
+        />
+      )}
     </div>
   );
 }

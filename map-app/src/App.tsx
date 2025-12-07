@@ -1,4 +1,4 @@
-import { useRepository, AppShell } from 'narrative-ui';
+import { useRepository, AppShell, OnboardingScreen } from 'narrative-ui';
 import { createEmptyMapDoc } from './schema/map-data';
 import { MapView } from './components/MapView';
 
@@ -26,6 +26,8 @@ function App() {
       createEmptyDocument={createEmptyMapDoc}
       storagePrefix="map"
       enableUserDocument
+      onboardingComponent={OnboardingScreen}
+      appTitle="Narrative Map"
     >
       {(props) => <MapView {...props} />}
     </AppShell>

@@ -38,8 +38,8 @@ interface UserProfileModalProps<TData = unknown> {
   isOpen: boolean;
   /** Called when the modal should close */
   onClose: () => void;
-  /** The current document (for profile lookup) */
-  doc: BaseDocument<TData>;
+  /** The current document (for profile lookup, optional) */
+  doc?: BaseDocument<TData> | null;
   /** Current user's DID (to show "You" badge and trust status) */
   currentUserDid?: string;
   /** Trust attestation given to this user (if any) */
@@ -120,7 +120,7 @@ export function UserProfileModal<TData = unknown>({
 
   const isOwnProfile = currentUserDid === did;
   const canEdit = isOwnProfile && !!onUpdateIdentity;
-  const workspaceProfile = doc.identities?.[did];
+  const workspaceProfile = doc?.identities?.[did];
   const trustedProfile = trustedUserProfiles[did];
   const profileSignatureStatus = trustedProfile?.profileSignatureStatus;
   // Profile is considered invalid if signature verification explicitly failed

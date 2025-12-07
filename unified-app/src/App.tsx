@@ -4,7 +4,7 @@
  * Uses the standard AppShell pattern like all other apps.
  */
 
-import { useRepository, AppShell } from 'narrative-ui';
+import { useRepository, AppShell, OnboardingScreen } from 'narrative-ui';
 import { createEmptyUnifiedDoc } from './types';
 import { UnifiedApp } from './UnifiedApp';
 
@@ -32,6 +32,8 @@ function App() {
       createEmptyDocument={createEmptyUnifiedDoc}
       storagePrefix="unified"
       enableUserDocument
+      onboardingComponent={OnboardingScreen}
+      appTitle="Narrative"
     >
       {(props) => <UnifiedApp {...props} />}
     </AppShell>

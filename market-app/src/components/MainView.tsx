@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { DocHandle, AutomergeUrl, DocumentId } from '@automerge/automerge-repo';
 import { useDocument } from '@automerge/automerge-repo-react-hooks';
-import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState } from 'narrative-ui';
+import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState, type ContentState } from 'narrative-ui';
 import { useMarket } from '../hooks/useMarket';
 import type { ListingType, CategoryId } from '../schema';
 import { CATEGORIES } from '../schema';
@@ -25,6 +25,15 @@ interface MainViewProps {
   workspaceLoading?: WorkspaceLoadingState;
   // Debug Dashboard toggle (from AppShell)
   onToggleDebugDashboard: () => void;
+  // Content state from AppShell
+  contentState: ContentState;
+  // Callbacks for content state transitions
+  onJoinWorkspace: (docUrl: string) => void;
+  onCancelLoading: () => void;
+  // Callback to go to start screen (from workspace switcher)
+  onGoToStart?: () => void;
+  // Callback to switch workspace without page reload
+  onSwitchWorkspace?: (workspaceId: string) => void;
 }
 
 type FilterType = 'all' | 'offer' | 'need';
@@ -33,12 +42,18 @@ type FilterStatus = 'active' | 'all';
 export function MainView({
   documentId,
   currentUserDid,
+  displayName,
   onResetIdentity,
   onNewDocument,
   userDocId,
   userDocHandle,
   workspaceLoading,
   onToggleDebugDashboard,
+  contentState,
+  onJoinWorkspace,
+  onCancelLoading,
+  onGoToStart,
+  onSwitchWorkspace,
 }: MainViewProps) {
   // Load UserDocument for trust/verification features
   const [userDoc] = useDocument<UserDocument>(userDocId as AutomergeUrl | undefined);
@@ -65,8 +80,6 @@ export function MainView({
   const [filterCategory, setFilterCategory] = useState<CategoryId | 'all'>('all');
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('active');
 
-  const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
-
   // Debug state is automatically updated via useAppContext in AppLayout
 
   const handleCreateListing = (data: {
@@ -91,7 +104,8 @@ export function MainView({
     }
   };
 
-  if (isLoading) {
+  // Only show loading spinner when actually loading a document (not in start state)
+  if (isLoading && contentState === 'ready') {
     return (
       <div className="min-h-screen bg-base-200 flex items-center justify-center">
         <span className="loading loading-spinner loading-lg"></span>
@@ -108,7 +122,6 @@ export function MainView({
       appTitle="Marktplatz"
       workspaceName="Marktplatz"
       hideWorkspaceSwitcher={true}
-      logoUrl={logoUrl}
       onResetIdentity={onResetIdentity}
       onCreateWorkspace={onNewDocument}
       onUpdateIdentityInDoc={(updates) => updateIdentity(currentUserDid, updates)}
@@ -117,6 +130,12 @@ export function MainView({
       userDocUrl={userDocHandle?.url}
       onToggleDebugDashboard={onToggleDebugDashboard}
       workspaceLoading={workspaceLoading}
+      contentState={contentState}
+      onJoinWorkspace={onJoinWorkspace}
+      onCancelLoading={onCancelLoading}
+      identity={{ did: currentUserDid, displayName }}
+      onGoToStart={onGoToStart}
+      onSwitchWorkspace={onSwitchWorkspace}
     >
       {(ctx: AppContextValue) => {
         // Filtered listings

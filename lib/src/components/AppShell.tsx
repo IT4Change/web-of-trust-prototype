@@ -65,8 +65,16 @@ export interface WorkspaceLoadingState {
   showCreateNewAfter: number;
 }
 
+/**
+ * Content state for the app:
+ * - 'start': No workspace loaded, show start/onboarding content
+ * - 'loading': Workspace is being loaded
+ * - 'ready': Workspace is loaded and ready
+ */
+export type ContentState = 'start' | 'loading' | 'ready';
+
 export interface AppShellChildProps {
-  /** Document ID (may be null while loading) */
+  /** Document ID (may be null while loading or in start state) */
   documentId: DocumentId | null;
   currentUserDid: string;
   privateKey?: string;
@@ -84,6 +92,37 @@ export interface AppShellChildProps {
 
   // Debug Dashboard controls
   onToggleDebugDashboard: () => void;
+
+  // Content state: determines what content area should show
+  contentState: ContentState;
+
+  // Callback when user wants to join a workspace
+  onJoinWorkspace: (docUrl: string) => void;
+
+  // Callback to cancel loading and return to start state
+  onCancelLoading: () => void;
+
+  // Callback to go to start screen (from workspace switcher when in ready state)
+  onGoToStart: () => void;
+
+  // Callback to switch workspace without page reload
+  onSwitchWorkspace: (workspaceId: string) => void;
+}
+
+export interface OnboardingProps {
+  /** Callback when user wants to join a workspace via URL */
+  onJoinWorkspace: (docUrl: string) => void;
+  /** Callback when user wants to create a new workspace */
+  onCreateWorkspace: (name: string, avatar?: string) => void;
+  /** Current user's identity */
+  identity: {
+    did: string;
+    displayName?: string;
+    publicKey?: string;
+    privateKey?: string;
+  };
+  /** App title for personalized greeting */
+  appTitle?: string;
 }
 
 export interface AppShellProps<TDoc> {
@@ -115,6 +154,17 @@ export interface AppShellProps<TDoc> {
   enableUserDocument?: boolean;
 
   /**
+   * Component to render when no workspace exists (onboarding)
+   * If not provided, auto-creates a new workspace (legacy behavior)
+   */
+  onboardingComponent?: React.ComponentType<OnboardingProps>;
+
+  /**
+   * App title passed to onboarding component
+   */
+  appTitle?: string;
+
+  /**
    * Render function that receives initialized document and identity
    */
   children: (props: AppShellChildProps) => ReactNode;
@@ -139,6 +189,8 @@ export function AppShell<TDoc>({
   createEmptyDocument,
   storagePrefix,
   enableUserDocument = false,
+  onboardingComponent: OnboardingComponent,
+  appTitle,
   children,
 }: AppShellProps<TDoc>) {
   // Core state
@@ -155,6 +207,9 @@ export function AppShell<TDoc>({
   const [retryCount, setRetryCount] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const loadStartTimeRef = useRef<number | null>(null);
+
+  // Onboarding state (when no workspace exists)
+  const [isOnboarding, setIsOnboarding] = useState(false);
 
   // User Document state (optional)
   const [userDocId, setUserDocId] = useState<string | undefined>(undefined);
@@ -441,14 +496,22 @@ export function AppShell<TDoc>({
       // Keep retryCount at last attempt (MAX_RETRY_ATTEMPTS - 1) so display shows correct number
       setRetryCount(MAX_RETRY_ATTEMPTS - 1);
     } else {
-      // No document to load - create new one
-      const handle = repo.create(createEmptyDocument(identity));
-      setDocumentId(handle.documentId);
-      saveDocumentId(storagePrefix, handle.documentId);
-      window.location.hash = `doc=${handle.documentId}`;
-      setIsInitializing(false);
+      // No document to load
+      if (OnboardingComponent) {
+        // Show onboarding screen instead of auto-creating workspace
+        console.log('[AppShell] No workspace found, showing onboarding');
+        setIsOnboarding(true);
+        setIsInitializing(false);
+      } else {
+        // Legacy behavior: auto-create new workspace
+        const handle = repo.create(createEmptyDocument(identity));
+        setDocumentId(handle.documentId);
+        saveDocumentId(storagePrefix, handle.documentId);
+        window.location.hash = `doc=${handle.documentId}`;
+        setIsInitializing(false);
+      }
     }
-  }, [repo, storagePrefix, createEmptyDocument, enableUserDocument, initializeUserDocument, loadDocumentWithRetry]);
+  }, [repo, storagePrefix, createEmptyDocument, enableUserDocument, initializeUserDocument, loadDocumentWithRetry, OnboardingComponent]);
 
   // Initialize on mount
   useEffect(() => {
@@ -504,6 +567,7 @@ export function AppShell<TDoc>({
     setDocumentId(docId);
     setIsLoadingDocument(false);
     setLoadingDocId(null);
+    setIsOnboarding(false); // Exit onboarding/start state
 
     // Push new hash
     const url = new URL(window.location.href);
@@ -517,11 +581,82 @@ export function AppShell<TDoc>({
     handleNewDocument();
   }, [storagePrefix, handleNewDocument]);
 
+  // Handler to cancel loading and return to start state
+  const handleCancelLoading = useCallback(() => {
+    console.log('[AppShell] Canceling document loading, returning to start');
+    setIsLoadingDocument(false);
+    setLoadingDocId(null);
+    clearDocumentId(storagePrefix);
+    window.location.hash = '';
+    setIsOnboarding(true);
+  }, [storagePrefix]);
+
+  // Handler to go to start screen (from ready state via workspace switcher)
+  const handleGoToStart = useCallback(() => {
+    console.log('[AppShell] Going to start screen');
+    setDocumentId(null);
+    clearDocumentId(storagePrefix);
+    window.location.hash = '';
+    setIsOnboarding(true);
+  }, [storagePrefix]);
+
+  // Shared document loading logic (used by switch + join) - no page reload
+  const loadWorkspaceDocument = useCallback(async (docId: string): Promise<boolean> => {
+    const identity = storedIdentityRef.current || loadSharedIdentity();
+    if (!identity) return false;
+
+    setIsLoadingDocument(true);
+    setLoadingDocId(docId);
+    setIsOnboarding(false);
+    loadStartTimeRef.current = Date.now();
+
+    for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+      setRetryCount(attempt);
+
+      const success = await loadDocumentWithRetry(docId, attempt, identity);
+      if (success) {
+        setIsLoadingDocument(false);
+        setLoadingDocId(null);
+        // Update URL without reload
+        const url = new URL(window.location.href);
+        url.hash = `doc=${docId}`;
+        window.history.pushState(null, '', url.toString());
+        return true;
+      }
+
+      if (attempt < MAX_RETRY_ATTEMPTS - 1) {
+        const delay = RETRY_DELAY_BASE * Math.pow(2, attempt);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+
+    console.error('[AppShell] Failed to load workspace');
+    return false;
+  }, [loadDocumentWithRetry]);
+
+  // Handle workspace switch (from WorkspaceSwitcher dropdown) - no page reload
+  const handleSwitchWorkspace = useCallback((workspaceId: string) => {
+    console.log('[AppShell] Switching to workspace:', workspaceId);
+    loadWorkspaceDocument(workspaceId);
+  }, [loadWorkspaceDocument]);
+
+  // Handler when user wants to join a workspace - no page reload
+  const handleJoinWorkspace = useCallback((docUrl: string) => {
+    console.log('[AppShell] Joining workspace:', docUrl);
+    loadWorkspaceDocument(docUrl);
+  }, [loadWorkspaceDocument]);
+
   // Show basic loading while initializing identity and user document
   // Once identity is ready, we render the shell even if workspace is still loading
   if (isInitializing || !currentUserDid) {
     return <LoadingScreen message="Initialisiere..." />;
   }
+
+  // Determine content state based on current loading/onboarding status
+  const contentState: ContentState =
+    isOnboarding ? 'start' :
+    isLoadingDocument ? 'loading' :
+    'ready';
 
   // Build workspace loading state for children
   const workspaceLoading: WorkspaceLoadingState | undefined = isLoadingDocument
@@ -547,6 +682,13 @@ export function AppShell<TDoc>({
         onResetIdentity: handleResetIdentity,
         onNewDocument: handleNewDocument,
         onToggleDebugDashboard: () => setShowDebugDashboard(prev => !prev),
+        // Content state: determines what content area should show
+        contentState,
+        // Callbacks for content state transitions
+        onJoinWorkspace: handleJoinWorkspace,
+        onCancelLoading: handleCancelLoading,
+        onGoToStart: handleGoToStart,
+        onSwitchWorkspace: handleSwitchWorkspace,
         // Workspace loading state (when document is still loading)
         workspaceLoading,
         // User Document (only if enabled)

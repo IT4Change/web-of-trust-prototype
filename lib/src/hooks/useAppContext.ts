@@ -160,9 +160,6 @@ export interface UseAppContextOptions<TData = unknown> {
   /** Whether to hide the workspace switcher (simple single-doc apps) */
   hideWorkspaceSwitcher?: boolean;
 
-  /** Logo URL for workspace switcher */
-  logoUrl?: string;
-
   /** Callback when identity needs to be reset */
   onResetIdentity?: () => void;
 
@@ -198,6 +195,12 @@ export interface UseAppContextOptions<TData = unknown> {
    * Required for bidirectional trust sync
    */
   repo?: Repo;
+
+  /**
+   * Callback for workspace switching without page reload (from AppShell)
+   * When provided, workspace switching will use this callback instead of page reload
+   */
+  onSwitchWorkspace?: (workspaceId: string) => void;
 }
 
 /**
@@ -263,10 +266,10 @@ export interface AppContextValue<TData = unknown> {
   openProfile: (did: string) => void;
 
   // Props ready for components - just spread these!
+  // navbarProps is always available (shell works without workspace doc)
   navbarProps: {
     currentUserDid: string;
-    doc: BaseDocument<TData>;
-    logoUrl: string;
+    doc: BaseDocument<TData> | null;  // May be null in start/loading states
     currentWorkspace: WorkspaceInfo | null;
     workspaces: WorkspaceInfo[];
     onSwitchWorkspace: (workspaceId: string) => void;
@@ -282,7 +285,7 @@ export interface AppContextValue<TData = unknown> {
     trustedUserProfiles?: Record<string, TrustedUserProfile>;
     onOpenProfile: (did: string) => void;
     onMutualTrustEstablished: (friendDid: string, friendName: string) => void;
-  } | null;
+  };
 
   newWorkspaceModalProps: {
     isOpen: boolean;
@@ -322,7 +325,6 @@ export function useAppContext<TData = unknown>(
     appTitle,
     workspaceName = 'Workspace',
     hideWorkspaceSwitcher = false,
-    logoUrl = '/logo.svg',
     onResetIdentity,
     onCreateWorkspace,
     onUpdateIdentityInDoc,
@@ -330,6 +332,7 @@ export function useAppContext<TData = unknown>(
     userDoc,
     userDocUrl,
     repo,
+    onSwitchWorkspace,
   } = options;
 
   // Identity state
@@ -772,9 +775,15 @@ export function useAppContext<TData = unknown>(
 
   // Handlers
   const handleSwitchWorkspace = useCallback((workspaceId: string) => {
-    window.location.hash = `#doc=${workspaceId}`;
-    window.location.reload();
-  }, []);
+    if (onSwitchWorkspace) {
+      // Use AppShell callback (no page reload)
+      onSwitchWorkspace(workspaceId);
+    } else {
+      // Fallback to page reload (legacy behavior)
+      window.location.hash = `#doc=${workspaceId}`;
+      window.location.reload();
+    }
+  }, [onSwitchWorkspace]);
 
   const openNewWorkspaceModal = useCallback(() => {
     setIsNewWorkspaceModalOpen(true);
@@ -790,9 +799,9 @@ export function useAppContext<TData = unknown>(
 
   const handleUpdateIdentity = useCallback(
     async (updates: { displayName?: string; avatarUrl?: string }) => {
-      if (!identity || !docHandle) return;
+      if (!identity) return;
 
-      // Update local identity (localStorage)
+      // Update local identity (localStorage) - always works, even without workspace
       const updatedIdentity = { ...identity, ...updates };
       setIdentity(updatedIdentity);
       saveSharedIdentity(updatedIdentity);
@@ -841,49 +850,51 @@ export function useAppContext<TData = unknown>(
         });
       }
 
-      // Update in document (app-specific or generic)
-      if (onUpdateIdentityInDoc) {
-        onUpdateIdentityInDoc(updates);
-      } else {
-        // Generic update
+      // Update in workspace document (only if available - not required for profile update)
+      if (docHandle) {
+        if (onUpdateIdentityInDoc) {
+          onUpdateIdentityInDoc(updates);
+        } else {
+          // Generic update
+          docHandle.change((d: BaseDocument<TData>) => {
+            if (!d.identities[identity.did]) {
+              d.identities[identity.did] = {};
+            }
+            if (updates.displayName !== undefined) {
+              d.identities[identity.did].displayName = updates.displayName;
+            }
+            if (updates.avatarUrl !== undefined) {
+              d.identities[identity.did].avatarUrl = updates.avatarUrl;
+            }
+            d.lastModified = Date.now();
+          });
+        }
+
+        // Also update identityLookup for workspace-internal profile resolution
         docHandle.change((d: BaseDocument<TData>) => {
-          if (!d.identities[identity.did]) {
-            d.identities[identity.did] = {};
+          if (!d.identityLookup) {
+            d.identityLookup = {};
           }
-          if (updates.displayName !== undefined) {
-            d.identities[identity.did].displayName = updates.displayName;
+          if (!d.identityLookup[identity.did]) {
+            d.identityLookup[identity.did] = { updatedAt: Date.now() };
           }
-          if (updates.avatarUrl !== undefined) {
-            d.identities[identity.did].avatarUrl = updates.avatarUrl;
+          // Only set non-undefined values (Automerge doesn't allow undefined)
+          if (updates.displayName !== undefined && updates.displayName !== null) {
+            d.identityLookup[identity.did].displayName = updates.displayName;
           }
-          d.lastModified = Date.now();
+          if (updates.avatarUrl !== undefined && updates.avatarUrl !== null && updates.avatarUrl !== '') {
+            d.identityLookup[identity.did].avatarUrl = updates.avatarUrl;
+          } else if (updates.avatarUrl === '' || updates.avatarUrl === null) {
+            // Remove avatar if explicitly cleared
+            delete d.identityLookup[identity.did].avatarUrl;
+          }
+          // Include userDocUrl for bidirectional trust
+          if (userDocUrl) {
+            d.identityLookup[identity.did].userDocUrl = userDocUrl;
+          }
+          d.identityLookup[identity.did].updatedAt = Date.now();
         });
       }
-
-      // Also update identityLookup for workspace-internal profile resolution
-      docHandle.change((d: BaseDocument<TData>) => {
-        if (!d.identityLookup) {
-          d.identityLookup = {};
-        }
-        if (!d.identityLookup[identity.did]) {
-          d.identityLookup[identity.did] = { updatedAt: Date.now() };
-        }
-        // Only set non-undefined values (Automerge doesn't allow undefined)
-        if (updates.displayName !== undefined && updates.displayName !== null) {
-          d.identityLookup[identity.did].displayName = updates.displayName;
-        }
-        if (updates.avatarUrl !== undefined && updates.avatarUrl !== null && updates.avatarUrl !== '') {
-          d.identityLookup[identity.did].avatarUrl = updates.avatarUrl;
-        } else if (updates.avatarUrl === '' || updates.avatarUrl === null) {
-          // Remove avatar if explicitly cleared
-          delete d.identityLookup[identity.did].avatarUrl;
-        }
-        // Include userDocUrl for bidirectional trust
-        if (userDocUrl) {
-          d.identityLookup[identity.did].userDocUrl = userDocUrl;
-        }
-        d.identityLookup[identity.did].updatedAt = Date.now();
-      });
 
       // Broadcast profile update to other tabs via BroadcastChannel
       broadcastProfileUpdate(updates);
@@ -1320,31 +1331,29 @@ export function useAppContext<TData = unknown>(
     });
   }, [docHandle]);
 
-  // Build navbar props (only if doc is loaded)
-  const navbarProps = doc
-    ? {
-        currentUserDid,
-        doc: doc as BaseDocument<TData>,
-        logoUrl,
-        currentWorkspace,
-        workspaces,
-        onSwitchWorkspace: handleSwitchWorkspace,
-        onNewWorkspace: handleNewWorkspace,
-        onTrustUser: handleTrustUser,
-        onToggleUserVisibility: toggleUserVisibility,
-        hiddenUserDids,
-        onShowToast: showToast,
-        hideWorkspaceSwitcher,
-        appTitle,
-        userDoc,
-        userDocUrl,
-        trustedUserProfiles,
-        onOpenProfile: openProfile,
-        onMutualTrustEstablished: handleMutualTrustEstablished,
-        documentUrl,
-        onUpdateWorkspace: handleUpdateWorkspace,
-      }
-    : null;
+  // Build navbar props (works with or without doc - shell should function without workspace)
+  // The navbar needs UserDocument for profile/WoT, not necessarily the workspace document
+  const navbarProps = {
+    currentUserDid,
+    doc: doc as BaseDocument<TData> | null,
+    currentWorkspace,
+    workspaces,
+    onSwitchWorkspace: handleSwitchWorkspace,
+    onNewWorkspace: handleNewWorkspace,
+    onTrustUser: handleTrustUser,
+    onToggleUserVisibility: toggleUserVisibility,
+    hiddenUserDids,
+    onShowToast: showToast,
+    hideWorkspaceSwitcher,
+    appTitle,
+    userDoc,
+    userDocUrl,
+    trustedUserProfiles,
+    onOpenProfile: openProfile,
+    onMutualTrustEstablished: handleMutualTrustEstablished,
+    documentUrl,
+    onUpdateWorkspace: handleUpdateWorkspace,
+  };
 
   return {
     identity,

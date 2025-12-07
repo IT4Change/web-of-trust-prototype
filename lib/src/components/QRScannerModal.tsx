@@ -15,7 +15,8 @@ interface QRScannerModalProps<TData = unknown> {
   isOpen: boolean;
   onClose: () => void;
   currentUserDid: string;
-  doc: BaseDocument<TData>;
+  /** Workspace document (optional - can work without it using only userDoc) */
+  doc?: BaseDocument<TData> | null;
   /** Callback when user trusts another user. Receives DID and optional userDocUrl for bidirectional trust. */
   onTrustUser: (did: string, userDocUrl?: string) => void;
   /** Current user's UserDocument URL (for showing own QR code after confirming) */
@@ -267,7 +268,7 @@ export function QRScannerModal<TData = unknown>({
     });
     if (scannedDid) {
       // Get display name before clearing state
-      const workspaceProfile = doc.identities[scannedDid];
+      const workspaceProfile = doc?.identities?.[scannedDid];
       const userName = loadedProfile?.displayName || workspaceProfile?.displayName || getDefaultDisplayName(scannedDid);
 
       console.log('[QRScannerModal] Calling onTrustUser with:', scannedDid, scannedUserDocUrl);
@@ -296,7 +297,7 @@ export function QRScannerModal<TData = unknown>({
 
   // Show own QR code after confirming trust (for reciprocal trust)
   if (showOwnQR && userDocUrl) {
-    const ownProfile = doc.identities[currentUserDid];
+    const ownProfile = doc?.identities?.[currentUserDid];
     const ownDisplayName = ownProfile?.displayName || getDefaultDisplayName(currentUserDid);
     const ownQrValue = `narrative://verify/${currentUserDid}?userDoc=${encodeURIComponent(userDocUrl)}`;
 
@@ -332,7 +333,7 @@ export function QRScannerModal<TData = unknown>({
 
   // Show confirmation dialog after successful scan
   if (scannedDid) {
-    const workspaceProfile = doc.identities[scannedDid];
+    const workspaceProfile = doc?.identities?.[scannedDid];
     // Prefer profile from UserDocument (if loaded), fall back to workspace profile
     const displayName = loadedProfile?.displayName || workspaceProfile?.displayName || getDefaultDisplayName(scannedDid);
     const avatarUrl = loadedProfile?.avatarUrl || workspaceProfile?.avatarUrl;

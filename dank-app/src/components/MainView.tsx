@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { DocHandle, AutomergeUrl, DocumentId } from '@automerge/automerge-repo';
 import { useDocument } from '@automerge/automerge-repo-react-hooks';
-import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState } from 'narrative-ui';
+import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState, type ContentState } from 'narrative-ui';
 import type { Voucher } from '../schema';
 // Debug extensions are auto-initialized via import
 import '../debug';
@@ -27,6 +27,15 @@ interface MainViewProps {
   workspaceLoading?: WorkspaceLoadingState;
   // Debug Dashboard toggle (from AppShell)
   onToggleDebugDashboard: () => void;
+  // Content state from AppShell
+  contentState: ContentState;
+  // Callbacks for content state transitions
+  onJoinWorkspace: (docUrl: string) => void;
+  onCancelLoading: () => void;
+  // Callback to go to start screen (from workspace switcher)
+  onGoToStart?: () => void;
+  // Callback to switch workspace without page reload
+  onSwitchWorkspace?: (workspaceId: string) => void;
 }
 
 type TabType = 'wallet' | 'issued' | 'all';
@@ -35,12 +44,18 @@ export function MainView({
   documentId,
   currentUserDid,
   privateKey,
+  displayName,
   onResetIdentity,
   onNewDocument,
   userDocId,
   userDocHandle,
   workspaceLoading,
   onToggleDebugDashboard,
+  contentState,
+  onJoinWorkspace,
+  onCancelLoading,
+  onGoToStart,
+  onSwitchWorkspace,
 }: MainViewProps) {
   // Load UserDocument for trust/verification features
   const [userDoc] = useDocument<UserDocument>(userDocId as AutomergeUrl | undefined);
@@ -67,8 +82,6 @@ export function MainView({
   const [transferVoucherId, setTransferVoucherId] = useState<string | null>(null);
   const [detailVoucherId, setDetailVoucherId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('wallet');
-
-  const logoUrl = `${import.meta.env.BASE_URL}dankwallet-icon.svg`;
 
   // Debug state is automatically updated via useAppContext in AppLayout
 
@@ -115,7 +128,6 @@ export function MainView({
       appTitle="Dank"
       workspaceName="Dank Wallet"
       hideWorkspaceSwitcher={true}
-      logoUrl={logoUrl}
       onResetIdentity={onResetIdentity}
       onCreateWorkspace={onNewDocument}
       userDocHandle={userDocHandle}
@@ -123,6 +135,12 @@ export function MainView({
       userDocUrl={userDocHandle?.url}
       onToggleDebugDashboard={onToggleDebugDashboard}
       workspaceLoading={workspaceLoading}
+      contentState={contentState}
+      onJoinWorkspace={onJoinWorkspace}
+      onCancelLoading={onCancelLoading}
+      identity={{ did: currentUserDid, displayName }}
+      onGoToStart={onGoToStart}
+      onSwitchWorkspace={onSwitchWorkspace}
     >
       {(_ctx: AppContextValue) => (
         <>

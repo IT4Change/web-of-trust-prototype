@@ -15,8 +15,8 @@ export async function createAssumption(
   sentence: string,
   tags?: string
 ) {
-  // Click the "New Assumption" button
-  const newButton = page.getByRole('button', { name: /new assumption/i });
+  // Click the "New Assumption" button (use first() since there might be multiple)
+  const newButton = page.getByRole('button', { name: /new assumption/i }).first();
   await expect(newButton).toBeVisible({ timeout: 10000 });
   await newButton.click();
 
@@ -109,26 +109,82 @@ export async function createNewBoard(page: Page) {
 }
 
 /**
+ * Creates a new workspace via the Start screen
+ * Used when the app shows the Start content (no workspace loaded)
+ */
+export async function createWorkspaceFromStart(page: Page) {
+  // Look for the "Neuen Workspace erstellen" button on the Start screen
+  const createButton = page.getByRole('button', { name: /neuen workspace erstellen/i });
+
+  if (await createButton.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await createButton.click();
+
+    // Wait for the input form to appear
+    // The placeholder is "Name des Workspace (optional)" for StartContent
+    // or "z.B. Mein Projekt" for NewWorkspaceModal
+    const nameInput = page.getByPlaceholder(/name des workspace|mein projekt|workspace name/i);
+    await expect(nameInput).toBeVisible({ timeout: 3000 });
+
+    const newWorkspaceName = `Test Board ${Date.now()}`;
+    await nameInput.fill(newWorkspaceName);
+
+    // Click "Erstellen" button
+    const submitBtn = page.getByRole('button', { name: /erstellen/i });
+    await expect(submitBtn).toBeEnabled({ timeout: 2000 });
+    await submitBtn.click();
+
+    // Wait for URL to contain doc ID
+    await page.waitForURL(/.*#doc=.*/, { timeout: 10000 });
+
+    // Wait for workspace content to fully load
+    await page.waitForTimeout(500);
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Ensures we're on a board (creates new if needed)
+ * Handles both the new Start screen and legacy auto-create behavior
  */
 export async function ensureOnBoard(page: Page) {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
 
+  // Give the app a moment to determine its state
+  await page.waitForTimeout(1000);
+
   const url = page.url();
   if (!url.includes('#doc=')) {
-    // Try to create a new board via workspace switcher
-    try {
-      await createNewBoard(page);
-    } catch {
-      // If workspace switcher doesn't work, the app might auto-create a doc
-      // Wait a bit and check again
-      await page.waitForTimeout(2000);
-      if (!page.url().includes('#doc=')) {
-        // Last resort: reload and hope for auto-creation
-        await page.reload();
-        await page.waitForLoadState('networkidle');
+    // Check if we're on the Start screen (new behavior)
+    const isStartScreen = await page.getByRole('button', { name: /neuen workspace erstellen/i })
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
+
+    if (isStartScreen) {
+      // Create workspace from Start screen
+      await createWorkspaceFromStart(page);
+    } else {
+      // Try to create a new board via workspace switcher (fallback)
+      try {
+        await createNewBoard(page);
+      } catch {
+        // If workspace switcher doesn't work, the app might auto-create a doc
+        // Wait a bit and check again
+        await page.waitForTimeout(2000);
+        if (!page.url().includes('#doc=')) {
+          // Last resort: reload and hope for auto-creation
+          await page.reload();
+          await page.waitForLoadState('networkidle');
+        }
       }
     }
   }
+
+  // Final verification: wait for a "New Assumption" button to be visible
+  // This indicates the workspace is fully loaded
+  // Use .first() since there might be multiple buttons (one in empty state, one floating)
+  const newAssumptionButton = page.getByRole('button', { name: /new assumption/i }).first();
+  await expect(newAssumptionButton).toBeVisible({ timeout: 15000 });
 }

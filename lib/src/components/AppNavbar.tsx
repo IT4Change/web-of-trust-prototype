@@ -43,11 +43,8 @@ export interface AppNavbarProps<TData = unknown> {
   /** Current user's DID */
   currentUserDid: string;
 
-  /** The Automerge document (for modals) */
-  doc: BaseDocument<TData>;
-
-  /** Logo URL for workspace switcher */
-  logoUrl: string;
+  /** The Automerge document (for modals) - may be null in start/loading states */
+  doc: BaseDocument<TData> | null;
 
   /** Current workspace info */
   currentWorkspace: WorkspaceInfo | null;
@@ -108,12 +105,17 @@ export interface AppNavbarProps<TData = unknown> {
 
   /** Show toast message */
   onShowToast?: (message: string) => void;
+
+  /** Whether currently in start state (no workspace loaded) */
+  isStart?: boolean;
+
+  /** Callback to go to start screen */
+  onGoToStart?: () => void;
 }
 
 export function AppNavbar<TData = unknown>({
   currentUserDid,
   doc,
-  logoUrl,
   currentWorkspace,
   workspaces,
   onSwitchWorkspace,
@@ -133,6 +135,8 @@ export function AppNavbar<TData = unknown>({
   documentUrl,
   onUpdateWorkspace,
   onShowToast,
+  isStart = false,
+  onGoToStart,
 }: AppNavbarProps<TData>) {
   // Modal states
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
@@ -142,7 +146,7 @@ export function AppNavbar<TData = unknown>({
   // URL-based profile support
   const { openProfile } = useProfileUrl();
 
-  const identities = doc.identities || {};
+  const identities = doc?.identities || {};
   const workspaceProfile = identities[currentUserDid];
   // Prefer UserDocument profile (syncs across tabs), fallback to workspace identity
   const displayName = userDoc?.profile?.displayName || workspaceProfile?.displayName || currentUserDid.slice(0, 12) + '...';
@@ -163,10 +167,12 @@ export function AppNavbar<TData = unknown>({
             <WorkspaceSwitcher
               currentWorkspace={currentWorkspace}
               workspaces={workspaces}
-              logoUrl={logoUrl}
               onSwitchWorkspace={onSwitchWorkspace}
               onNewWorkspace={onNewWorkspace}
               onOpenWorkspaceModal={() => setShowWorkspaceModal(true)}
+              showStartEntry={workspaces.length > 0}
+              isStart={isStart}
+              onGoToStart={onGoToStart}
             />
           )}
         </div>
@@ -300,26 +306,29 @@ export function AppNavbar<TData = unknown>({
         </div>
       </div>
 
-      {/* Integrated Modals */}
-      <WorkspaceModal
-        isOpen={showWorkspaceModal}
-        onClose={() => setShowWorkspaceModal(false)}
-        currentWorkspace={currentWorkspace}
-        doc={doc}
-        currentUserDid={currentUserDid}
-        documentUrl={documentUrl}
-        onUpdateWorkspace={onUpdateWorkspace}
-        onShowToast={onShowToast}
-        onUserClick={(did: string) => {
-          setShowWorkspaceModal(false);
-          openProfile(did);
-        }}
-        hiddenUserDids={hiddenUserDids}
-        onToggleUserVisibility={handleToggleVisibility}
-        userDoc={userDoc}
-        trustedUserProfiles={trustedUserProfiles}
-      />
+      {/* WorkspaceModal - only render when doc is available (workspace-specific) */}
+      {doc && (
+        <WorkspaceModal
+          isOpen={showWorkspaceModal}
+          onClose={() => setShowWorkspaceModal(false)}
+          currentWorkspace={currentWorkspace}
+          doc={doc}
+          currentUserDid={currentUserDid}
+          documentUrl={documentUrl}
+          onUpdateWorkspace={onUpdateWorkspace}
+          onShowToast={onShowToast}
+          onUserClick={(did: string) => {
+            setShowWorkspaceModal(false);
+            openProfile(did);
+          }}
+          hiddenUserDids={hiddenUserDids}
+          onToggleUserVisibility={handleToggleVisibility}
+          userDoc={userDoc}
+          trustedUserProfiles={trustedUserProfiles}
+        />
+      )}
 
+      {/* Trust modals - work with userDoc, doc is optional */}
       <CollaboratorsModal
         isOpen={showCollaboratorsModal}
         onClose={() => setShowCollaboratorsModal(false)}

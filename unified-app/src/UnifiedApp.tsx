@@ -7,7 +7,7 @@
 import { useState } from 'react';
 import type { DocHandle, AutomergeUrl, DocumentId } from '@automerge/automerge-repo';
 import { useDocHandle, useDocument } from '@automerge/automerge-repo-react-hooks';
-import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState } from 'narrative-ui';
+import { AppLayout, type AppContextValue, type UserDocument, type WorkspaceLoadingState, type ContentState } from 'narrative-ui';
 import { UnifiedDocument, AVAILABLE_MODULES, ModuleId } from './types';
 import { ModuleSwitcher } from './components/ModuleSwitcher';
 import { NarrativeModuleWrapper } from './components/NarrativeModuleWrapper';
@@ -29,6 +29,15 @@ export interface UnifiedAppProps {
   workspaceLoading?: WorkspaceLoadingState;
   // Debug Dashboard toggle (from AppShell)
   onToggleDebugDashboard: () => void;
+  // Content state from AppShell
+  contentState: ContentState;
+  // Callbacks for content state transitions
+  onJoinWorkspace: (docUrl: string) => void;
+  onCancelLoading: () => void;
+  // Callback to go to start screen (from workspace switcher)
+  onGoToStart?: () => void;
+  // Callback to switch workspace without page reload
+  onSwitchWorkspace?: (workspaceId: string) => void;
 }
 
 /**
@@ -37,12 +46,18 @@ export interface UnifiedAppProps {
 export function UnifiedApp({
   documentId,
   currentUserDid,
+  displayName,
   onResetIdentity,
   onNewDocument,
   userDocId,
   userDocHandle,
   workspaceLoading,
   onToggleDebugDashboard,
+  contentState,
+  onJoinWorkspace,
+  onCancelLoading,
+  onGoToStart,
+  onSwitchWorkspace,
 }: UnifiedAppProps) {
   // In automerge-repo v2.x, use useDocHandle hook instead of repo.find()
   // Handle null docId case - hooks must be called unconditionally
@@ -54,8 +69,6 @@ export function UnifiedApp({
 
   // App-specific UI state
   const [activeModule, setActiveModule] = useState<ModuleId>('narrative');
-
-  const logoUrl = `${import.meta.env.BASE_URL}logo.svg`;
 
   // Module Switcher component for navbar
   const moduleSwitcher = doc ? (
@@ -96,7 +109,6 @@ export function UnifiedApp({
       appTitle="Narrative"
       workspaceName={doc?.context?.name || 'Workspace'}
       hideWorkspaceSwitcher={false}
-      logoUrl={logoUrl}
       onResetIdentity={onResetIdentity}
       onCreateWorkspace={onNewDocument}
       onUpdateIdentityInDoc={handleUpdateIdentityInDoc}
@@ -106,6 +118,12 @@ export function UnifiedApp({
       userDocUrl={userDocHandle?.url}
       onToggleDebugDashboard={onToggleDebugDashboard}
       workspaceLoading={workspaceLoading}
+      contentState={contentState}
+      onJoinWorkspace={onJoinWorkspace}
+      onCancelLoading={onCancelLoading}
+      identity={{ did: currentUserDid, displayName }}
+      onGoToStart={onGoToStart}
+      onSwitchWorkspace={onSwitchWorkspace}
     >
       {(ctx: AppContextValue) => (
         <>

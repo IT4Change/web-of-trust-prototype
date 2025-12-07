@@ -45,60 +45,8 @@ jobs:
           cp -r narrative-app/dist _site/narrative
           cp -r map-app/dist _site/map
           cp -r market-app/dist _site/market
-          cp -r unified-app/dist _site/unified
+          cp -r unified-app/dist _site/
           cp -r dank-app/dist _site/dank
-
-          # Create root index.html with app selector
-          cat > _site/index.html << 'EOF'
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Web of Trust Apps</title>
-            <style>
-              body {
-                font-family: system-ui, -apple-system, sans-serif;
-                max-width: 600px;
-                margin: 100px auto;
-                padding: 20px;
-                text-align: center;
-              }
-              h1 { color: #333; }
-              .apps {
-                display: flex;
-                flex-direction: column;
-                gap: 16px;
-                margin-top: 40px;
-              }
-              a {
-                display: block;
-                padding: 16px 24px;
-                background: #3b82f6;
-                color: white;
-                text-decoration: none;
-                border-radius: 8px;
-                font-weight: 500;
-                transition: background 0.2s;
-              }
-              a:hover { background: #2563eb; }
-              .secondary { background: #6b7280; }
-              .secondary:hover { background: #4b5563; }
-            </style>
-          </head>
-          <body>
-            <h1>Web of Trust Apps</h1>
-            <p>Choose an app to get started:</p>
-            <div class="apps">
-              <a href="./unified/">Unified App (All-in-One)</a>
-              <a href="./narrative/" class="secondary">Narrative (Assumptions)</a>
-              <a href="./map/" class="secondary">Map App</a>
-              <a href="./market/" class="secondary">Market App</a>
-              <a href="./dank/" class="secondary">Dank App</a>
-            </div>
-          </body>
-          </html>
-          EOF
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

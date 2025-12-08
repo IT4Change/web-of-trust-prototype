@@ -24,10 +24,7 @@ import {
   saveSharedIdentity,
   type StoredIdentity,
 } from '../utils/storage';
-import {
-  loadWorkspaceList,
-  type WorkspaceInfo,
-} from '../components/WorkspaceSwitcher';
+import { type WorkspaceInfo } from '../components/WorkspaceSwitcher';
 import { addWorkspace as addWorkspaceToDoc } from '../schema/userDocument';
 import type { BaseDocument } from '../schema/document';
 import type { TrustAttestation } from '../schema/identity';
@@ -337,11 +334,8 @@ export function useAppContext<TData = unknown>(
   // Identity state
   const [identity, setIdentity] = useState<StoredIdentity | null>(() => loadSharedIdentity());
 
-  // Workspace state - now derived from UserDocument with localStorage fallback for migration
-  const [localWorkspaces] = useState<WorkspaceInfo[]>(() => loadWorkspaceList());
-
-  // Convert UserDocument workspaces to WorkspaceInfo format
-  const workspacesFromUserDoc = useMemo((): WorkspaceInfo[] => {
+  // Workspaces derived from UserDocument only (no localStorage migration needed)
+  const workspaces = useMemo((): WorkspaceInfo[] => {
     if (!userDoc?.workspaces) return [];
     return Object.values(userDoc.workspaces).map(ws => ({
       id: ws.docId,
@@ -350,19 +344,6 @@ export function useAppContext<TData = unknown>(
       lastAccessed: ws.lastAccessedAt ?? ws.addedAt,
     }));
   }, [userDoc?.workspaces]);
-
-  // Merge UserDocument workspaces with localStorage (for migration)
-  // UserDocument has priority, localStorage provides fallback for unmigrated workspaces
-  const workspaces = useMemo((): WorkspaceInfo[] => {
-    const fromUserDoc = new Map(workspacesFromUserDoc.map(w => [w.id, w]));
-    // Add localStorage workspaces that aren't yet in UserDocument
-    for (const lw of localWorkspaces) {
-      if (!fromUserDoc.has(lw.id)) {
-        fromUserDoc.set(lw.id, lw);
-      }
-    }
-    return Array.from(fromUserDoc.values());
-  }, [workspacesFromUserDoc, localWorkspaces]);
 
   // UI state
   const [hiddenUserDids, setHiddenUserDids] = useState<Set<string>>(new Set());
@@ -395,15 +376,15 @@ export function useAppContext<TData = unknown>(
   const workspaceAvatar = docContext?.avatar;
 
   // Track current workspace in UserDocument
-  // Use a ref to track last saved values to avoid infinite loops
-  const [lastSavedWorkspaceKey, setLastSavedWorkspaceKey] = useState('');
+  // Use a ref to track whether we've already updated for this workspace session
+  const lastSavedWorkspaceRef = useRef<string>('');
 
   useEffect(() => {
     if (!doc || !documentId || !userDocHandle) return;
 
     // Create a stable key to check if we need to update
     const currentKey = `${documentId}|${effectiveWorkspaceName}|${workspaceAvatar || ''}`;
-    if (currentKey === lastSavedWorkspaceKey) {
+    if (currentKey === lastSavedWorkspaceRef.current) {
       return;
     }
 
@@ -413,11 +394,12 @@ export function useAppContext<TData = unknown>(
         // New workspace - add it
         addWorkspaceToDoc(d, documentId, effectiveWorkspaceName, workspaceAvatar);
       } else {
-        // Existing workspace - update lastAccessedAt and metadata if changed
+        // Existing workspace - update metadata only if changed
         const ws = d.workspaces[documentId];
-        ws.lastAccessedAt = Date.now();
+        let changed = false;
         if (ws.name !== effectiveWorkspaceName) {
           ws.name = effectiveWorkspaceName;
+          changed = true;
         }
         if (ws.avatar !== workspaceAvatar) {
           if (workspaceAvatar) {
@@ -425,50 +407,19 @@ export function useAppContext<TData = unknown>(
           } else {
             delete ws.avatar;
           }
+          changed = true;
         }
-        d.lastModified = Date.now();
+        // Only update timestamps if something actually changed
+        if (changed) {
+          ws.lastAccessedAt = Date.now();
+          d.lastModified = Date.now();
+        }
       }
     });
 
-    setLastSavedWorkspaceKey(currentKey);
-  }); // No dependencies - we check manually with lastSavedWorkspaceKey
+    lastSavedWorkspaceRef.current = currentKey;
+  }, [doc, documentId, userDocHandle, effectiveWorkspaceName, workspaceAvatar]);
 
-  // Migration: Move localStorage workspaces to UserDocument (one-time)
-  const [migrationDone, setMigrationDone] = useState(false);
-  useEffect(() => {
-    if (migrationDone || !userDocHandle || !userDoc || localWorkspaces.length === 0) return;
-
-    // Check if any localStorage workspaces need to be migrated
-    const toMigrate = localWorkspaces.filter(lw => !userDoc.workspaces[lw.id]);
-    if (toMigrate.length === 0) {
-      setMigrationDone(true);
-      return;
-    }
-
-    console.log(`[useAppContext] Migrating ${toMigrate.length} workspaces from localStorage to UserDocument`);
-
-    userDocHandle.change((d) => {
-      for (const ws of toMigrate) {
-        if (!d.workspaces[ws.id]) {
-          // Create workspace entry - only include avatar if it exists
-          // (Automerge doesn't allow undefined values)
-          const wsEntry: typeof d.workspaces[string] = {
-            docId: ws.id,
-            name: ws.name,
-            addedAt: ws.lastAccessed,
-            lastAccessedAt: ws.lastAccessed,
-          };
-          if (ws.avatar) {
-            wsEntry.avatar = ws.avatar;
-          }
-          d.workspaces[ws.id] = wsEntry;
-        }
-      }
-      d.lastModified = Date.now();
-    });
-
-    setMigrationDone(true);
-  }, [userDocHandle, userDoc, localWorkspaces, migrationDone]);
 
   // Update debug state when documents change (for console debugging)
   useEffect(() => {

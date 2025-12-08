@@ -16,6 +16,7 @@ import { useAppContext, type AppContextValue } from '../hooks/useAppContext';
 import { useProfileUrl } from '../hooks/useProfileUrl';
 import type { BaseDocument } from '../schema/document';
 import type { UserDocument } from '../schema/userDocument';
+import { removeWorkspace } from '../schema/userDocument';
 import { AppNavbar } from './AppNavbar';
 import { TrustReciprocityModal } from './TrustReciprocityModal';
 import { NewWorkspaceModal } from './NewWorkspaceModal';
@@ -352,6 +353,16 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
     setIsScannerOpen(true);
   }, [closeProfile]);
 
+  // Leave workspace: remove from UserDocument and go to start
+  const handleLeaveWorkspace = useCallback(() => {
+    if (userDocHandle && documentId) {
+      userDocHandle.change((d) => {
+        removeWorkspace(d, documentId);
+      });
+    }
+    onGoToStart?.();
+  }, [userDocHandle, documentId, onGoToStart]);
+
   // Render content based on contentState
   const renderContent = () => {
     switch (contentState) {
@@ -414,6 +425,7 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
           onToggleDebugDashboard={onToggleDebugDashboard}
           isStart={isStart}
           onGoToStart={onGoToStart}
+          onLeaveWorkspace={handleLeaveWorkspace}
         >
           {navbarChildren}
         </AppNavbar>

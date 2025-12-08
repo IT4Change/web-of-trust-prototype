@@ -111,6 +111,9 @@ export interface AppNavbarProps<TData = unknown> {
 
   /** Callback to go to start screen */
   onGoToStart?: () => void;
+
+  /** Callback to leave workspace (removes from list and goes to start) */
+  onLeaveWorkspace?: () => void;
 }
 
 export function AppNavbar<TData = unknown>({
@@ -137,6 +140,7 @@ export function AppNavbar<TData = unknown>({
   onShowToast,
   isStart = false,
   onGoToStart,
+  onLeaveWorkspace,
 }: AppNavbarProps<TData>) {
   // Modal states
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
@@ -325,6 +329,7 @@ export function AppNavbar<TData = unknown>({
           onToggleUserVisibility={handleToggleVisibility}
           userDoc={userDoc}
           trustedUserProfiles={trustedUserProfiles}
+          onLeaveWorkspace={onLeaveWorkspace}
         />
       )}
 

@@ -45,6 +45,8 @@ interface WorkspaceModalProps<TData = unknown> {
   userDoc?: UserDocument | null;
   /** Profiles loaded from trusted users' UserDocuments */
   trustedUserProfiles?: Record<string, TrustedUserProfile>;
+  /** Callback to leave the workspace */
+  onLeaveWorkspace?: () => void;
 }
 
 export function WorkspaceModal<TData = unknown>({
@@ -62,11 +64,13 @@ export function WorkspaceModal<TData = unknown>({
   onToggleUserVisibility,
   userDoc,
   trustedUserProfiles = {},
+  onLeaveWorkspace,
 }: WorkspaceModalProps<TData>) {
   // Edit states
   const [isEditingName, setIsEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(currentWorkspace?.name || '');
   const [avatarError, setAvatarError] = useState('');
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
 
   const canEdit = !!onUpdateWorkspace;
   const displayName = currentWorkspace?.name || 'Workspace';
@@ -317,7 +321,46 @@ export function WorkspaceModal<TData = unknown>({
         </div>
 
         {/* Modal Actions */}
-        <div className="modal-action">
+        <div className="modal-action justify-between">
+          {/* Leave Workspace - left side */}
+          {onLeaveWorkspace && !showLeaveConfirm && (
+            <button
+              className="btn btn-ghost text-error"
+              onClick={() => setShowLeaveConfirm(true)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Verlassen
+            </button>
+          )}
+
+          {/* Leave confirmation */}
+          {onLeaveWorkspace && showLeaveConfirm && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-error">Wirklich verlassen?</span>
+              <button
+                className="btn btn-error"
+                onClick={() => {
+                  onLeaveWorkspace();
+                  onClose();
+                }}
+              >
+                Ja
+              </button>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setShowLeaveConfirm(false)}
+              >
+                Nein
+              </button>
+            </div>
+          )}
+
+          {/* Spacer when no leave button */}
+          {!onLeaveWorkspace && <div />}
+
+          {/* Close button - right side */}
           <button className="btn" onClick={onClose}>
             Schließen
           </button>

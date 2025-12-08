@@ -46,6 +46,14 @@ export { useRepository, type RepositoryOptions } from './hooks/useRepository';
 export { useTrustNotifications } from './hooks/useTrustNotifications';
 export { useAppContext, type UseAppContextOptions, type AppContextValue, type TrustedUserProfile } from './hooks/useAppContext';
 export {
+  useKnownProfiles,
+  type KnownProfile,
+  type ProfileSource,
+  type ProfileSignatureStatus,
+  type UseKnownProfilesOptions,
+  type UseKnownProfilesResult,
+} from './hooks/useKnownProfiles';
+export {
   useUserDocument,
   loadUserDocId,
   saveUserDocId,

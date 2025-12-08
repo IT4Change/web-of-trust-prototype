@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { BaseDocument } from '../schema/document';
 import type { TrustAttestation } from '../schema/identity';
-import type { TrustedUserProfile } from '../hooks/useAppContext';
+import type { TrustedUserProfile, KnownProfile } from '../hooks/useAppContext';
 import type { UserDocument } from '../schema/userDocument';
 import { UserAvatar } from './UserAvatar';
 import { QRScannerModal } from './QRScannerModal';
@@ -28,14 +28,19 @@ async function verifyAttestationSignature(attestation: TrustAttestation): Promis
 
 interface TrustReciprocityModalProps<TData = unknown> {
   pendingAttestations: TrustAttestation[];
-  doc: BaseDocument<TData>;
+  /** Workspace document (optional - used for workspace identity fallback) */
+  doc?: BaseDocument<TData> | null;
   currentUserDid: string;
   /** Called when user successfully scans and trusts back via QR */
   onTrustUser: (trusteeDid: string, trusteeUserDocUrl?: string) => void;
   onDecline: (attestationId: string) => void;
   onShowToast?: (message: string) => void;
-  /** Profiles loaded from trusted users' UserDocuments (for avatar/name) */
+  /** @deprecated Use getProfile instead */
   trustedUserProfiles?: Record<string, TrustedUserProfile>;
+  /** Get profile from central known profiles */
+  getProfile?: (did: string) => KnownProfile | undefined;
+  /** Register an external UserDoc URL for reactive updates (e.g., from QR scanner) */
+  registerExternalDoc?: (userDocUrl: string) => void;
   /** User document URL for QR code generation */
   userDocUrl?: string;
   /** Current user's UserDocument (reactive, for passing to QRScannerModal) */
@@ -54,6 +59,8 @@ export function TrustReciprocityModal<TData = unknown>({
   onDecline,
   onShowToast,
   trustedUserProfiles = {},
+  getProfile,
+  registerExternalDoc,
   userDocUrl,
   userDoc,
   onOpenProfile,
@@ -114,11 +121,12 @@ export function TrustReciprocityModal<TData = unknown>({
 
   const currentAttestation = pendingAttestations[currentIndex];
   const trusterDid = currentAttestation.trusterDid;
-  const workspaceProfile = doc.identities[trusterDid];
+  const knownProfile = getProfile?.(trusterDid);
+  const workspaceProfile = doc?.identities?.[trusterDid];
   const trustedProfile = trustedUserProfiles[trusterDid];
-  // Prefer profile from trusted user's UserDoc, fallback to workspace identity, fallback to DID-based name
-  const displayName = trustedProfile?.displayName || workspaceProfile?.displayName || getDefaultDisplayName(trusterDid);
-  const avatarUrl = trustedProfile?.avatarUrl || workspaceProfile?.avatarUrl;
+  // Priority: knownProfiles > trustedUserProfiles > workspace identity > DID-based name
+  const displayName = knownProfile?.displayName || trustedProfile?.displayName || workspaceProfile?.displayName || getDefaultDisplayName(trusterDid);
+  const avatarUrl = knownProfile?.avatarUrl || trustedProfile?.avatarUrl || workspaceProfile?.avatarUrl;
 
   const handleOpenScanner = () => {
     setShowScanner(true);
@@ -137,7 +145,7 @@ export function TrustReciprocityModal<TData = unknown>({
       onDecline(currentAttestation.id); // Mark as seen
 
       // This is mutual trust! The truster trusted us, and we just trusted them back
-      const friendName = trustedUserProfiles[scannedDid]?.displayName || displayName;
+      const friendName = getProfile?.(scannedDid)?.displayName || trustedUserProfiles[scannedDid]?.displayName || displayName;
       onMutualTrustEstablished?.(scannedDid, friendName);
       onOpenProfile?.(scannedDid);
     }
@@ -276,6 +284,8 @@ export function TrustReciprocityModal<TData = unknown>({
         userDoc={userDoc}
         onOpenProfile={onOpenProfile}
         onMutualTrustEstablished={onMutualTrustEstablished}
+        getProfile={getProfile}
+        registerExternalDoc={registerExternalDoc}
       />
     </div>
   );

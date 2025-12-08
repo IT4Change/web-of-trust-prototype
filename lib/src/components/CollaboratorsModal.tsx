@@ -16,7 +16,7 @@ import { TrustGraph } from './TrustGraph';
 import type { BaseDocument } from '../schema/document';
 import type { UserDocument } from '../schema/userDocument';
 import type { TrustAttestation } from '../schema/identity';
-import type { TrustedUserProfile } from '../hooks/useAppContext';
+import type { TrustedUserProfile, KnownProfile } from '../hooks/useAppContext';
 import { verifyEntitySignature } from '../utils/signature';
 import { extractPublicKeyFromDid, base64Encode, getDefaultDisplayName } from '../utils/did';
 
@@ -61,10 +61,17 @@ interface CollaboratorsModalProps<TData = unknown> {
   /** User document for trust information */
   userDoc?: UserDocument | null;
   /**
+   * @deprecated Use knownProfiles instead
    * Profiles loaded from trusted users' UserDocuments (optional)
-   * Used as primary source for avatar/name of verified friends
    */
   trustedUserProfiles?: Record<string, TrustedUserProfile>;
+  /**
+   * All known profiles from useAppContext
+   * Recommended - provides profiles from trust network, workspace, and external sources
+   */
+  knownProfiles?: Map<string, KnownProfile>;
+  /** Get profile from central known profiles */
+  getProfile?: (did: string) => KnownProfile | undefined;
   /** User document URL for QR code generation */
   userDocUrl?: string;
 }
@@ -82,6 +89,8 @@ export function CollaboratorsModal<TData = unknown>({
   onUserClick,
   userDoc,
   trustedUserProfiles = {},
+  knownProfiles = new Map(),
+  getProfile,
   userDocUrl,
 }: CollaboratorsModalProps<TData>) {
   const [showScanner, setShowScanner] = useState(false);
@@ -134,20 +143,21 @@ export function CollaboratorsModal<TData = unknown>({
   }
 
   // Convert to array and build user data
-  // Priority: trustedUserProfiles > doc.identities > doc.identityLookup > default name
+  // Priority: knownProfiles > trustedUserProfiles > doc.identities > doc.identityLookup > default name
   const collaborators = Array.from(allDids)
     .filter(did => did !== currentUserDid) // Exclude self
     .map(did => {
+      const knownProfile = getProfile?.(did) || knownProfiles.get(did);
       const trustedProfile = trustedUserProfiles[did];
       const workspaceProfile = doc?.identities?.[did];
       const lookupProfile = doc?.identityLookup?.[did];
       return {
         did,
-        displayName: trustedProfile?.displayName || workspaceProfile?.displayName || lookupProfile?.displayName || getDefaultDisplayName(did),
-        avatarUrl: trustedProfile?.avatarUrl || workspaceProfile?.avatarUrl || lookupProfile?.avatarUrl,
+        displayName: knownProfile?.displayName || trustedProfile?.displayName || workspaceProfile?.displayName || lookupProfile?.displayName || getDefaultDisplayName(did),
+        avatarUrl: knownProfile?.avatarUrl || trustedProfile?.avatarUrl || workspaceProfile?.avatarUrl || lookupProfile?.avatarUrl,
         outgoingTrust: userDoc?.trustGiven?.[did],
         incomingTrust: userDoc?.trustReceived?.[did],
-        profileSignatureStatus: trustedProfile?.profileSignatureStatus,
+        profileSignatureStatus: knownProfile?.signatureStatus || trustedProfile?.profileSignatureStatus,
       };
     });
 
@@ -291,6 +301,7 @@ export function CollaboratorsModal<TData = unknown>({
           <div className="max-h-[50vh] overflow-hidden">
             <TrustGraph
               userDoc={userDoc ?? undefined}
+              knownProfiles={knownProfiles}
               trustedUserProfiles={trustedUserProfiles}
               height={350}
               onNodeClick={onUserClick}

@@ -507,6 +507,8 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
         <TrustReciprocityModal
           {...ctx.trustReciprocityModalProps}
           trustedUserProfiles={ctx.trustedUserProfiles}
+          getProfile={ctx.getProfile}
+          registerExternalDoc={ctx.registerExternalDoc}
         />
       )}
       {ctx.toastProps && <Toast {...ctx.toastProps} />}

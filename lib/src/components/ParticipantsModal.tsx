@@ -10,7 +10,7 @@ import { UserListItem } from './UserListItem';
 import type { BaseDocument } from '../schema/document';
 import type { UserDocument } from '../schema/userDocument';
 import type { TrustAttestation } from '../schema/identity';
-import type { TrustedUserProfile } from '../hooks/useAppContext';
+import type { TrustedUserProfile, KnownProfile } from '../hooks/useAppContext';
 import { verifyEntitySignature } from '../utils/signature';
 import { extractPublicKeyFromDid, base64Encode } from '../utils/did';
 
@@ -53,10 +53,16 @@ interface ParticipantsModalProps<TData = unknown> {
   /** User document for trust information (optional) */
   userDoc?: UserDocument | null;
   /**
+   * @deprecated Use knownProfiles/getProfile instead
    * Profiles loaded from trusted users' UserDocuments (optional)
-   * Used as primary source for avatar/name of verified friends
    */
   trustedUserProfiles?: Record<string, TrustedUserProfile>;
+  /**
+   * All known profiles from useAppContext
+   */
+  knownProfiles?: Map<string, KnownProfile>;
+  /** Get profile from central known profiles */
+  getProfile?: (did: string) => KnownProfile | undefined;
 }
 
 export function ParticipantsModal<TData = unknown>({
@@ -69,6 +75,8 @@ export function ParticipantsModal<TData = unknown>({
   onUserClick,
   userDoc,
   trustedUserProfiles = {},
+  knownProfiles = new Map(),
+  getProfile,
 }: ParticipantsModalProps<TData>) {
   // Track signature verification status for each DID
   const [signatureStatuses, setSignatureStatuses] = useState<
@@ -103,17 +111,15 @@ export function ParticipantsModal<TData = unknown>({
   if (!isOpen) return null;
 
   // Get all workspace participants from doc.identities
-  // For avatar/name: prefer trustedUserProfiles (from their UserDoc), fallback to doc.identities
+  // Priority: knownProfiles > trustedUserProfiles > doc.identities
   const participants = Object.entries(doc.identities).map(([did, profile]) => {
+    const knownProfile = getProfile?.(did) || knownProfiles.get(did);
     const trustedProfile = trustedUserProfiles[did];
     return {
       did,
-      // Prefer name from trusted user's UserDoc, fallback to workspace identity
-      displayName: trustedProfile?.displayName || profile?.displayName,
-      // Prefer avatar from trusted user's UserDoc, fallback to workspace identity
-      avatarUrl: trustedProfile?.avatarUrl || profile?.avatarUrl,
-      // Profile signature status for verified profiles
-      profileSignatureStatus: trustedProfile?.profileSignatureStatus,
+      displayName: knownProfile?.displayName || trustedProfile?.displayName || profile?.displayName,
+      avatarUrl: knownProfile?.avatarUrl || trustedProfile?.avatarUrl || profile?.avatarUrl,
+      profileSignatureStatus: knownProfile?.signatureStatus || trustedProfile?.profileSignatureStatus,
     };
   });
 

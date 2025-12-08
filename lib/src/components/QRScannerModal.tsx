@@ -5,6 +5,7 @@ import type { AutomergeUrl } from '@automerge/automerge-repo';
 import { QRCodeSVG } from 'qrcode.react';
 import type { BaseDocument } from '../schema/document';
 import type { UserDocument } from '../schema/userDocument';
+import type { KnownProfile } from '../hooks/useAppContext';
 import { UserAvatar } from './UserAvatar';
 import { getDefaultDisplayName, extractPublicKeyFromDid, base64Encode } from '../utils/did';
 import { verifyProfileSignature } from '../utils/signature';
@@ -27,6 +28,10 @@ interface QRScannerModalProps<TData = unknown> {
   onOpenProfile?: (did: string) => void;
   /** Callback when mutual trust is established (both users trust each other) */
   onMutualTrustEstablished?: (friendDid: string, friendName: string) => void;
+  /** Get profile from central known profiles (optional - enables reactive updates) */
+  getProfile?: (did: string) => KnownProfile | undefined;
+  /** Register external doc for reactive profile loading (optional - call after QR scan) */
+  registerExternalDoc?: (userDocUrl: string) => void;
 }
 
 export function QRScannerModal<TData = unknown>({
@@ -39,6 +44,8 @@ export function QRScannerModal<TData = unknown>({
   userDoc,
   onOpenProfile,
   onMutualTrustEstablished,
+  getProfile,
+  registerExternalDoc,
 }: QRScannerModalProps<TData>) {
   const repo = useRepo();
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -58,6 +65,11 @@ export function QRScannerModal<TData = unknown>({
       setSignatureStatus('missing');
       setLoadedProfile(null);
       return;
+    }
+
+    // Register with central profile management for reactive updates
+    if (registerExternalDoc) {
+      registerExternalDoc(scannedUserDocUrl);
     }
 
     let cleanup: (() => void) | undefined;
@@ -336,21 +348,29 @@ export function QRScannerModal<TData = unknown>({
 
   // Show confirmation dialog after successful scan
   if (scannedDid) {
+    // Priority: knownProfiles (central) > loadedProfile (local) > workspace > default
+    const knownProfile = getProfile?.(scannedDid);
     const workspaceProfile = doc?.identities?.[scannedDid];
-    // Prefer profile from UserDocument (if loaded), fall back to workspace profile
-    const displayName = loadedProfile?.displayName || workspaceProfile?.displayName || getDefaultDisplayName(scannedDid);
-    const avatarUrl = loadedProfile?.avatarUrl || workspaceProfile?.avatarUrl;
+    const displayName = knownProfile?.displayName || loadedProfile?.displayName || workspaceProfile?.displayName || getDefaultDisplayName(scannedDid);
+    const avatarUrl = knownProfile?.avatarUrl || loadedProfile?.avatarUrl || workspaceProfile?.avatarUrl;
 
-    // Render signature badge
+    // Use signature status from knownProfiles if available, otherwise use local status
+    const effectiveSignatureStatus = knownProfile?.signatureStatus || signatureStatus;
+
+    // Render signature badge using effectiveSignatureStatus
     const renderSignatureBadge = () => {
-      if (signatureStatus === 'loading' || signatureStatus === 'waiting') {
-        return (
-          <span className="tooltip tooltip-top" data-tip={signatureStatus === 'waiting' ? "Warte auf Netzwerk..." : "Profil wird geprüft..."}>
-            <span className="loading loading-spinner loading-xs"></span>
-          </span>
-        );
+      if (effectiveSignatureStatus === 'loading' || effectiveSignatureStatus === 'waiting' || effectiveSignatureStatus === 'pending') {
+        // Show loading only for local states (knownProfile 'pending' means still loading)
+        if (signatureStatus === 'loading' || signatureStatus === 'waiting') {
+          return (
+            <span className="tooltip tooltip-top" data-tip={signatureStatus === 'waiting' ? "Warte auf Netzwerk..." : "Profil wird geprüft..."}>
+              <span className="loading loading-spinner loading-xs"></span>
+            </span>
+          );
+        }
+        return null;
       }
-      if (signatureStatus === 'valid') {
+      if (effectiveSignatureStatus === 'valid') {
         return (
           <span className="tooltip tooltip-top" data-tip="Profil verifiziert">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -359,7 +379,7 @@ export function QRScannerModal<TData = unknown>({
           </span>
         );
       }
-      if (signatureStatus === 'invalid') {
+      if (effectiveSignatureStatus === 'invalid') {
         return (
           <span className="tooltip tooltip-top" data-tip="Profil manipuliert!">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-error" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -368,7 +388,7 @@ export function QRScannerModal<TData = unknown>({
           </span>
         );
       }
-      // 'missing' or 'pending' - no badge shown
+      // 'missing' - no badge shown
       return null;
     };
 

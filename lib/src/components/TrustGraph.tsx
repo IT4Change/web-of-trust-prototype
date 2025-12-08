@@ -10,7 +10,7 @@ import { useRepo } from '@automerge/automerge-repo-react-hooks';
 import type { AutomergeUrl } from '@automerge/automerge-repo';
 import type { UserDocument } from '../schema/userDocument';
 import type { TrustAttestation } from '../schema/identity';
-import type { TrustedUserProfile } from '../hooks/useAppContext';
+import type { TrustedUserProfile, KnownProfile } from '../hooks/useAppContext';
 import { UserAvatar } from './UserAvatar';
 
 interface TrustNode {
@@ -55,7 +55,15 @@ export interface TrustGraphProps {
   userDoc?: UserDocument;
   /** Map of external user documents by DID (from DebugDashboard) */
   externalDocs?: Map<string, UserDocument>;
-  /** Trusted user profiles (from useAppContext - alternative to externalDocs) */
+  /**
+   * All known profiles from useAppContext
+   * Recommended - provides profiles from trust network, workspace, and external sources
+   */
+  knownProfiles?: Map<string, KnownProfile>;
+  /**
+   * @deprecated Use knownProfiles instead
+   * Trusted user profiles (from useAppContext - alternative to externalDocs)
+   */
   trustedUserProfiles?: Record<string, TrustedUserProfile>;
   /** Width of the graph (default: 100%) */
   width?: number | string;
@@ -71,11 +79,12 @@ export interface TrustGraphProps {
 
 /**
  * Extract nodes and edges from user documents
- * Supports either externalDocs (full UserDocuments) or trustedUserProfiles (lightweight)
+ * Supports knownProfiles (recommended), externalDocs, or trustedUserProfiles (legacy)
  */
 function buildGraph(
   userDoc: UserDocument | undefined,
   externalDocs: Map<string, UserDocument>,
+  knownProfiles: Map<string, KnownProfile> = new Map(),
   trustedUserProfiles: Record<string, TrustedUserProfile> = {}
 ): { nodes: TrustNode[]; edges: TrustEdge[] } {
   if (!userDoc) {
@@ -91,7 +100,10 @@ function buildGraph(
   const getRandom = seededRandom(userDoc.did);
 
   // Helper to get label for a DID
+  // Priority: knownProfiles > externalDocs > trustedUserProfiles > DID substring
   const getLabel = (did: string): string => {
+    const known = knownProfiles.get(did);
+    if (known?.displayName) return known.displayName;
     const externalDoc = externalDocs.get(did);
     if (externalDoc?.profile?.displayName) return externalDoc.profile.displayName;
     const profile = trustedUserProfiles[did];
@@ -100,7 +112,10 @@ function buildGraph(
   };
 
   // Helper to get avatar for a DID
+  // Priority: knownProfiles > externalDocs > trustedUserProfiles
   const getAvatarUrl = (did: string): string | undefined => {
+    const known = knownProfiles.get(did);
+    if (known?.avatarUrl) return known.avatarUrl;
     const externalDoc = externalDocs.get(did);
     if (externalDoc?.profile?.avatarUrl) return externalDoc.profile.avatarUrl;
     return trustedUserProfiles[did]?.avatarUrl;
@@ -391,6 +406,7 @@ function simulateForces(
 export function TrustGraph({
   userDoc,
   externalDocs: providedExternalDocs,
+  knownProfiles = new Map(),
   trustedUserProfiles = {},
   width = '100%',
   height = 400,
@@ -515,7 +531,7 @@ export function TrustGraph({
 
   // Build and layout graph
   const { nodes, edges } = useMemo(() => {
-    const graph = buildGraph(userDoc, externalDocs, trustedUserProfiles);
+    const graph = buildGraph(userDoc, externalDocs, knownProfiles, trustedUserProfiles);
     const layoutedNodes = simulateForces(
       graph.nodes,
       graph.edges,
@@ -524,7 +540,7 @@ export function TrustGraph({
       200  // More iterations for better convergence
     );
     return { nodes: layoutedNodes, edges: graph.edges };
-  }, [userDoc, externalDocs, trustedUserProfiles, dimensions.width, dimensions.height]);
+  }, [userDoc, externalDocs, knownProfiles, trustedUserProfiles, dimensions.width, dimensions.height]);
 
   const handleNodeClick = useCallback((did: string) => {
     setSelectedNode(did);

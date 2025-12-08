@@ -290,29 +290,27 @@ export function useKnownProfiles({
       console.log(`[useKnownProfiles] Loading doc: ${docUrl.substring(0, 30)}... (expected DID: ${expectedDid?.substring(0, 20) || 'unknown'})`);
 
       try {
-        console.log(`[useKnownProfiles] Calling repo.find() for: ${docUrl.substring(0, 30)}...`);
+        console.log(`[useKnownProfiles] Calling repo.findClassic() for: ${docUrl.substring(0, 30)}...`);
 
-        // repo.find() can block indefinitely in automerge-repo v2.x, so add a timeout
-        const findTimeoutMs = 60000; // 60 seconds
-        const findTimeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`repo.find() timeout after ${findTimeoutMs}ms`)), findTimeoutMs);
-        });
-
-        const handle = await Promise.race([
-          repo.find<UserDocument>(docUrl as AutomergeUrl),
-          findTimeoutPromise,
-        ]);
-        console.log(`[useKnownProfiles] repo.find() returned handle for: ${docUrl.substring(0, 30)}...`);
+        // Use findClassic() which returns immediately with a handle (doesn't block like find())
+        // The handle will emit 'change' events when the document arrives from the network
+        const handle = await repo.findClassic<UserDocument>(docUrl as AutomergeUrl);
+        console.log(`[useKnownProfiles] repo.findClassic() returned handle for: ${docUrl.substring(0, 30)}...`);
 
         // Create change handler BEFORE reading doc to avoid race
         const changeHandler = async ({ doc: changedDoc }: { doc: UserDocument }) => {
           if (!changedDoc) return;
+
+          console.log(`[useKnownProfiles] Change handler called for: ${docUrl.substring(0, 30)}...`);
 
           const did = changedDoc.did;
           if (expectedDid && did !== expectedDid) {
             console.warn(`[useKnownProfiles] DID mismatch: expected ${expectedDid}, got ${did}`);
             return;
           }
+
+          // Mark as ready when we receive data
+          updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
 
           const signatureStatus = changedDoc.profile
             ? await verifyUserProfileSignature(changedDoc.profile, did)
@@ -353,12 +351,13 @@ export function useKnownProfiles({
           }
         };
 
+        // Subscribe to changes FIRST (before checking doc) to catch network updates
         handle.on('change', changeHandler);
 
         // Store subscription for cleanup
         subscriptionsRef.current.set(docUrl, { handle, handler: changeHandler, source });
 
-        // Check if document is immediately available
+        // Check if document is immediately available (from cache)
         const immediateDoc = handle.doc();
         if (immediateDoc) {
           // Document already loaded (e.g., from local cache)
@@ -366,8 +365,8 @@ export function useKnownProfiles({
           updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
           await changeHandler({ doc: immediateDoc });
         } else {
-          // Document not yet available - create placeholder and wait for it
-          console.log(`[useKnownProfiles] Doc not cached, waiting for network: ${docUrl.substring(0, 30)}...`);
+          // Document not yet available - will arrive via change event
+          console.log(`[useKnownProfiles] Doc not cached, waiting for network via change events: ${docUrl.substring(0, 30)}...`);
           updateTrackedDoc(docUrl, { status: 'pending' });
 
           if (expectedDid) {
@@ -380,36 +379,7 @@ export function useKnownProfiles({
               lastUpdated: Date.now(),
             });
           }
-
-          // Wait for document to load from network using proper automerge-repo API
-          // This is critical: handle.whenReady() resolves when the doc is synced
-          // Add explicit timeout since whenReady() may hang indefinitely
-          try {
-            console.log(`[useKnownProfiles] Calling handle.whenReady() for: ${docUrl.substring(0, 30)}...`);
-
-            // Create a timeout promise
-            const timeoutMs = 60000; // 60 seconds - sync can take up to a minute
-            const timeoutPromise = new Promise<never>((_, reject) => {
-              setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs);
-            });
-
-            // Race between whenReady and timeout
-            await Promise.race([handle.whenReady(), timeoutPromise]);
-
-            const loadedDoc = handle.doc();
-            if (loadedDoc) {
-              console.log(`[useKnownProfiles] Doc ready from network: ${docUrl.substring(0, 30)}...`);
-              updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
-              await changeHandler({ doc: loadedDoc });
-            } else {
-              console.warn(`[useKnownProfiles] Doc ready but no content: ${docUrl.substring(0, 30)}...`);
-              updateTrackedDoc(docUrl, { status: 'error', error: 'Ready but no content' });
-            }
-          } catch (err) {
-            // Timeout or error waiting for doc - placeholder remains
-            console.warn(`[useKnownProfiles] Timeout/error waiting for doc: ${docUrl.substring(0, 30)}...`, err);
-            updateTrackedDoc(docUrl, { status: 'timeout', error: String(err) });
-          }
+          // No blocking wait - the change handler will update the profile when the doc arrives
         }
 
         return handle;

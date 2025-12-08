@@ -10,7 +10,7 @@ import { UserAvatar } from './UserAvatar';
 import { getDefaultDisplayName, extractPublicKeyFromDid, base64Encode } from '../utils/did';
 import { verifyProfileSignature } from '../utils/signature';
 
-type SignatureStatus = 'valid' | 'invalid' | 'missing' | 'pending' | 'loading' | 'waiting';
+type SignatureStatus = 'valid' | 'invalid' | 'missing' | 'pending' | 'loading' | 'waiting' | 'network-error';
 
 interface QRScannerModalProps<TData = unknown> {
   isOpen: boolean;
@@ -88,26 +88,18 @@ export function QRScannerModal<TData = unknown>({
       setSignatureStatus('loading');
       try {
         // Load the UserDocument
-        console.log('[QRScannerModal] Calling repo.find() for:', scannedUserDocUrl?.substring(0, 40));
+        console.log('[QRScannerModal] Calling repo.findClassic() for:', scannedUserDocUrl?.substring(0, 40));
 
-        // repo.find() can block indefinitely in automerge-repo v2.x, so add a timeout
-        const findTimeoutMs = 60000; // 60 seconds
-        const findTimeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`repo.find() timeout after ${findTimeoutMs}ms`)), findTimeoutMs);
-        });
-
-        const handle = await Promise.race([
-          repo.find<UserDocument>(scannedUserDocUrl as AutomergeUrl),
-          findTimeoutPromise,
-        ]);
-        console.log('[QRScannerModal] repo.find() returned handle');
+        // Use findClassic() which returns immediately with a handle (doesn't block like find())
+        // The handle will emit 'change' events when the document arrives from the network
+        const handle = await repo.findClassic<UserDocument>(scannedUserDocUrl as AutomergeUrl);
+        console.log('[QRScannerModal] repo.findClassic() returned handle');
 
         // Function to update profile from document
         const updateFromDoc = async (userDoc: UserDocument | undefined) => {
           if (!userDoc || !userDoc.profile) {
-            console.log('[QRScannerModal] UserDocument has no profile');
-            setSignatureStatus('missing');
-            setLoadedProfile(null);
+            console.log('[QRScannerModal] UserDocument has no profile yet');
+            // Don't set status to 'missing' - keep waiting for the doc to arrive
             return;
           }
 
@@ -139,38 +131,9 @@ export function QRScannerModal<TData = unknown>({
           setSignatureStatus(result.valid ? 'valid' : 'invalid');
         };
 
-        // Show waiting state while we wait for the document
-        setSignatureStatus('waiting');
-
-        // Wait for document to arrive from network (proper automerge-repo API!)
-        // Add explicit timeout since whenReady() may hang indefinitely
-        console.log('[QRScannerModal] Waiting for document from network...');
-
-        const timeoutMs = 60000; // 60 seconds - sync can take up to a minute
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs);
-        });
-
-        try {
-          await Promise.race([handle.whenReady(), timeoutPromise]);
-          console.log('[QRScannerModal] Document ready!');
-        } catch (timeoutErr) {
-          console.warn('[QRScannerModal] Timeout waiting for document:', timeoutErr);
-          // Check if we got the doc anyway (race condition)
-          const maybeDoc = handle.doc();
-          if (!maybeDoc) {
-            setSignatureStatus('missing');
-            return;
-          }
-          console.log('[QRScannerModal] Document available despite timeout');
-        }
-
-        // Now safely access the document
-        const userDoc = handle.doc();
-        await updateFromDoc(userDoc);
-
-        // Subscribe to future changes
+        // Subscribe to changes FIRST (before checking doc) to catch network updates
         const onChange = () => {
+          console.log('[QRScannerModal] Document changed, updating profile...');
           updateFromDoc(handle.doc());
         };
         handle.on('change', onChange);
@@ -178,9 +141,25 @@ export function QRScannerModal<TData = unknown>({
         cleanup = () => {
           handle.off('change', onChange);
         };
+
+        // Check if document is already available (from cache)
+        const immediateDoc = handle.doc();
+        if (immediateDoc) {
+          console.log('[QRScannerModal] Document immediately available (cached)');
+          await updateFromDoc(immediateDoc);
+        } else {
+          // Show waiting state - document will arrive via change event
+          console.log('[QRScannerModal] Document not cached, waiting for network...');
+          setSignatureStatus('waiting');
+        }
       } catch (error) {
         console.error('[QRScannerModal] Failed to load/verify UserDocument:', error);
-        setSignatureStatus('missing');
+        // Distinguish between network timeout and other errors
+        if (error instanceof Error && error.message.includes('timeout')) {
+          setSignatureStatus('network-error');
+        } else {
+          setSignatureStatus('missing');
+        }
       }
     };
 
@@ -440,6 +419,15 @@ export function QRScannerModal<TData = unknown>({
           </span>
         );
       }
+      if (effectiveSignatureStatus === 'network-error') {
+        return (
+          <span className="tooltip tooltip-top" data-tip="Profil nicht erreichbar">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238m7.824 2.167a1 1 0 111.414 1.414m-1.414-1.414L3 3m8.293 8.293l1.414 1.414" />
+            </svg>
+          </span>
+        );
+      }
       // 'missing' - no badge shown
       return null;
     };
@@ -486,6 +474,17 @@ export function QRScannerModal<TData = unknown>({
               <span className="loading loading-spinner loading-xs"></span>
               <span className="text-sm">
                 Profil wird vom Netzwerk geladen...
+              </span>
+            </div>
+          )}
+
+          {signatureStatus === 'network-error' && (
+            <div className="alert alert-warning py-2 justify-center text-center">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <span className="text-sm">
+                Profil konnte nicht vom Netzwerk geladen werden. Du kannst trotzdem vertrauen.
               </span>
             </div>
           )}

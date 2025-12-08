@@ -507,6 +507,7 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
         <TrustReciprocityModal
           {...ctx.trustReciprocityModalProps}
           trustedUserProfiles={ctx.trustedUserProfiles}
+          knownProfiles={ctx.knownProfiles}
           getProfile={ctx.getProfile}
           registerExternalDoc={ctx.registerExternalDoc}
         />
@@ -552,6 +553,9 @@ export function AppLayout<TDoc extends BaseDocument<unknown>>({
           userDoc={userDoc}
           onOpenProfile={ctx.openProfile}
           onMutualTrustEstablished={ctx.handleMutualTrustEstablished}
+          knownProfiles={ctx.knownProfiles}
+          getProfile={ctx.getProfile}
+          registerExternalDoc={ctx.registerExternalDoc}
         />
       )}
 

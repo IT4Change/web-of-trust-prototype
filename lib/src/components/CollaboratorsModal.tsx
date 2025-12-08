@@ -74,6 +74,8 @@ interface CollaboratorsModalProps<TData = unknown> {
   getProfile?: (did: string) => KnownProfile | undefined;
   /** User document URL for QR code generation */
   userDocUrl?: string;
+  /** Register external doc for reactive profile loading */
+  registerExternalDoc?: (userDocUrl: string) => void;
 }
 
 type ViewTab = 'list' | 'graph';
@@ -92,6 +94,7 @@ export function CollaboratorsModal<TData = unknown>({
   knownProfiles = new Map(),
   getProfile,
   userDocUrl,
+  registerExternalDoc,
 }: CollaboratorsModalProps<TData>) {
   const [showScanner, setShowScanner] = useState(false);
   const [activeTab, setActiveTab] = useState<ViewTab>('list');
@@ -350,6 +353,9 @@ export function CollaboratorsModal<TData = unknown>({
         doc={doc}
         onTrustUser={onTrustUser}
         userDocUrl={userDocUrl}
+        knownProfiles={knownProfiles}
+        getProfile={getProfile}
+        registerExternalDoc={registerExternalDoc}
       />
     </div>
   );

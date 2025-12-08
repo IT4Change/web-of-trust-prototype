@@ -39,6 +39,8 @@ interface TrustReciprocityModalProps<TData = unknown> {
   trustedUserProfiles?: Record<string, TrustedUserProfile>;
   /** Get profile from central known profiles */
   getProfile?: (did: string) => KnownProfile | undefined;
+  /** All known profiles for reactive UI updates */
+  knownProfiles?: Map<string, KnownProfile>;
   /** Register an external UserDoc URL for reactive updates (e.g., from QR scanner) */
   registerExternalDoc?: (userDocUrl: string) => void;
   /** User document URL for QR code generation */
@@ -60,6 +62,7 @@ export function TrustReciprocityModal<TData = unknown>({
   onShowToast,
   trustedUserProfiles = {},
   getProfile,
+  knownProfiles,
   registerExternalDoc,
   userDocUrl,
   userDoc,
@@ -284,6 +287,7 @@ export function TrustReciprocityModal<TData = unknown>({
         userDoc={userDoc}
         onOpenProfile={onOpenProfile}
         onMutualTrustEstablished={onMutualTrustEstablished}
+        knownProfiles={knownProfiles}
         getProfile={getProfile}
         registerExternalDoc={registerExternalDoc}
       />

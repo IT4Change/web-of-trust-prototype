@@ -37,7 +37,7 @@ import {
 import { useProfileUrl } from '../hooks/useProfileUrl';
 import type { BaseDocument } from '../schema/document';
 import type { UserDocument } from '../schema/userDocument';
-import type { TrustedUserProfile } from '../hooks/useAppContext';
+import type { TrustedUserProfile, KnownProfile } from '../hooks/useAppContext';
 
 export interface AppNavbarProps<TData = unknown> {
   /** Current user's DID */
@@ -114,6 +114,15 @@ export interface AppNavbarProps<TData = unknown> {
 
   /** Callback to leave workspace (removes from list and goes to start) */
   onLeaveWorkspace?: () => void;
+
+  /** All known profiles for reactive UI updates */
+  knownProfiles?: Map<string, KnownProfile>;
+
+  /** Get profile from central known profiles */
+  getProfile?: (did: string) => KnownProfile | undefined;
+
+  /** Register external doc for reactive profile loading */
+  registerExternalDoc?: (userDocUrl: string) => void;
 }
 
 export function AppNavbar<TData = unknown>({
@@ -141,6 +150,9 @@ export function AppNavbar<TData = unknown>({
   isStart = false,
   onGoToStart,
   onLeaveWorkspace,
+  knownProfiles,
+  getProfile,
+  registerExternalDoc,
 }: AppNavbarProps<TData>) {
   // Modal states
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false);
@@ -353,6 +365,9 @@ export function AppNavbar<TData = unknown>({
         }}
         userDoc={userDoc}
         trustedUserProfiles={trustedUserProfiles}
+        knownProfiles={knownProfiles}
+        getProfile={getProfile}
+        registerExternalDoc={registerExternalDoc}
       />
 
       <QRScannerModal
@@ -365,6 +380,9 @@ export function AppNavbar<TData = unknown>({
         userDoc={userDoc}
         onOpenProfile={onOpenProfile}
         onMutualTrustEstablished={onMutualTrustEstablished}
+        knownProfiles={knownProfiles}
+        getProfile={getProfile}
+        registerExternalDoc={registerExternalDoc}
       />
     </>
   );

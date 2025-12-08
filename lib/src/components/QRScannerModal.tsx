@@ -32,6 +32,11 @@ interface QRScannerModalProps<TData = unknown> {
   getProfile?: (did: string) => KnownProfile | undefined;
   /** Register external doc for reactive profile loading (optional - call after QR scan) */
   registerExternalDoc?: (userDocUrl: string) => void;
+  /**
+   * All known profiles from useAppContext (optional - enables reactive UI updates)
+   * When this Map changes, the component re-renders with updated profile data
+   */
+  knownProfiles?: Map<string, KnownProfile>;
 }
 
 export function QRScannerModal<TData = unknown>({
@@ -46,6 +51,7 @@ export function QRScannerModal<TData = unknown>({
   onMutualTrustEstablished,
   getProfile,
   registerExternalDoc,
+  knownProfiles,
 }: QRScannerModalProps<TData>) {
   const repo = useRepo();
   const scannerRef = useRef<Html5Qrcode | null>(null);
@@ -349,7 +355,8 @@ export function QRScannerModal<TData = unknown>({
   // Show confirmation dialog after successful scan
   if (scannedDid) {
     // Priority: knownProfiles (central) > loadedProfile (local) > workspace > default
-    const knownProfile = getProfile?.(scannedDid);
+    // Use both getProfile function and knownProfiles Map for reactive updates
+    const knownProfile = getProfile?.(scannedDid) ?? knownProfiles?.get(scannedDid);
     const workspaceProfile = doc?.identities?.[scannedDid];
     const displayName = knownProfile?.displayName || loadedProfile?.displayName || workspaceProfile?.displayName || getDefaultDisplayName(scannedDid);
     const avatarUrl = knownProfile?.avatarUrl || loadedProfile?.avatarUrl || workspaceProfile?.avatarUrl;

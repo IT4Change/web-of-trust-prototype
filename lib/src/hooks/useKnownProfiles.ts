@@ -64,7 +64,17 @@ export interface TrackedDocInfo {
   startedAt: number;
   readyAt?: number;
   error?: string;
+  attempt?: number;
 }
+
+/** Timeout for a single document loading attempt (ms) */
+const DOC_LOAD_TIMEOUT = 8000;
+
+/** Max retry attempts for document loading */
+const MAX_RETRY_ATTEMPTS = 5;
+
+/** Delay between retries (ms) - exponential backoff starting point */
+const RETRY_DELAY_BASE = 1000;
 
 /** Return type for useKnownProfiles hook */
 export interface UseKnownProfilesResult {
@@ -267,7 +277,90 @@ export function useKnownProfiles({
     profilesRef.current = profiles;
   }, [profiles]);
 
-  // Helper to load a UserDoc and subscribe to changes
+  // Helper to process a loaded UserDoc and set up subscription
+  const processLoadedDoc = useCallback(
+    async (
+      handle: DocHandle<UserDocument>,
+      doc: UserDocument,
+      docUrl: string,
+      expectedDid: string | null,
+      source: ProfileSource
+    ) => {
+      const did = doc.did;
+      if (expectedDid && did !== expectedDid) {
+        console.warn(`[useKnownProfiles] DID mismatch: expected ${expectedDid}, got ${did}`);
+        return;
+      }
+
+      // Mark as ready
+      updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
+
+      const signatureStatus = doc.profile
+        ? await verifyUserProfileSignature(doc.profile, did)
+        : 'missing';
+
+      updateProfile(did, {
+        displayName: doc.profile?.displayName,
+        avatarUrl: doc.profile?.avatarUrl,
+        userDocUrl: docUrl,
+        source,
+        signatureStatus,
+        lastUpdated: Date.now(),
+      });
+
+      // Set up change handler for reactive updates
+      const changeHandler = async ({ doc: changedDoc }: { doc: UserDocument }) => {
+        if (!changedDoc) return;
+
+        console.log(`[useKnownProfiles] Change event for: ${docUrl.substring(0, 30)}...`);
+
+        const changedSignatureStatus = changedDoc.profile
+          ? await verifyUserProfileSignature(changedDoc.profile, changedDoc.did)
+          : 'missing';
+
+        updateProfile(changedDoc.did, {
+          displayName: changedDoc.profile?.displayName,
+          avatarUrl: changedDoc.profile?.avatarUrl,
+          userDocUrl: docUrl,
+          source,
+          signatureStatus: changedSignatureStatus,
+          lastUpdated: Date.now(),
+        });
+      };
+
+      // Subscribe to future changes
+      handle.on('change', changeHandler);
+      subscriptionsRef.current.set(docUrl, { handle, handler: changeHandler, source });
+
+      // For 1st degree connections, also crawl their trust relationships (2nd degree)
+      if (source === 'trust-given' || source === 'trust-received') {
+        const { trustGiven, trustReceived } = extractTrustUrls(doc);
+        const secondDegreeUrls = new Map<string, string>();
+
+        // Combine trust relationships for 2nd degree
+        for (const [did2, url] of trustGiven) {
+          if (did2 !== currentUserDid && !profilesRef.current.has(did2) && !loaded2ndDegreeRef.current.has(did2)) {
+            secondDegreeUrls.set(did2, url);
+          }
+        }
+        for (const [did2, url] of trustReceived) {
+          if (did2 !== currentUserDid && !profilesRef.current.has(did2) && !loaded2ndDegreeRef.current.has(did2)) {
+            secondDegreeUrls.set(did2, url);
+          }
+        }
+
+        // Load 2nd degree profiles (in background, don't await)
+        for (const [did2, url2] of secondDegreeUrls) {
+          loaded2ndDegreeRef.current.add(did2);
+          // eslint-disable-next-line @typescript-eslint/no-use-before-define
+          loadAndSubscribe(url2, did2, 'network-2nd');
+        }
+      }
+    },
+    [currentUserDid, updateProfile, updateTrackedDoc]
+  );
+
+  // Helper to load a UserDoc with retry logic (like AppShell pattern)
   // IMPORTANT: This callback must NOT depend on `profiles` to avoid infinite loops
   const loadAndSubscribe = useCallback(
     async (docUrl: string, expectedDid: string | null, source: ProfileSource) => {
@@ -285,111 +378,72 @@ export function useKnownProfiles({
         source,
         status: 'loading',
         startedAt,
+        attempt: 1,
       });
 
       console.log(`[useKnownProfiles] Loading doc: ${docUrl.substring(0, 30)}... (expected DID: ${expectedDid?.substring(0, 20) || 'unknown'})`);
 
-      try {
-        console.log(`[useKnownProfiles] Calling repo.findClassic() for: ${docUrl.substring(0, 30)}...`);
+      // Create placeholder profile while loading
+      if (expectedDid) {
+        updateProfile(expectedDid, {
+          displayName: undefined,
+          avatarUrl: undefined,
+          userDocUrl: docUrl,
+          source,
+          signatureStatus: 'pending',
+          lastUpdated: Date.now(),
+        });
+      }
 
-        // Use findClassic() which returns immediately with a handle (doesn't block like find())
-        // The handle will emit 'change' events when the document arrives from the network
-        const handle = await repo.findClassic<UserDocument>(docUrl as AutomergeUrl);
-        console.log(`[useKnownProfiles] repo.findClassic() returned handle for: ${docUrl.substring(0, 30)}...`);
+      // Retry loop with timeout (same pattern as AppShell)
+      for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS; attempt++) {
+        try {
+          console.log(`[useKnownProfiles] Loading attempt ${attempt}/${MAX_RETRY_ATTEMPTS} for: ${docUrl.substring(0, 30)}...`);
+          updateTrackedDoc(docUrl, { attempt });
 
-        // Create change handler BEFORE reading doc to avoid race
-        const changeHandler = async ({ doc: changedDoc }: { doc: UserDocument }) => {
-          if (!changedDoc) return;
-
-          console.log(`[useKnownProfiles] Change handler called for: ${docUrl.substring(0, 30)}...`);
-
-          const did = changedDoc.did;
-          if (expectedDid && did !== expectedDid) {
-            console.warn(`[useKnownProfiles] DID mismatch: expected ${expectedDid}, got ${did}`);
-            return;
-          }
-
-          // Mark as ready when we receive data
-          updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
-
-          const signatureStatus = changedDoc.profile
-            ? await verifyUserProfileSignature(changedDoc.profile, did)
-            : 'missing';
-
-          updateProfile(did, {
-            displayName: changedDoc.profile?.displayName,
-            avatarUrl: changedDoc.profile?.avatarUrl,
-            userDocUrl: docUrl,
-            source,
-            signatureStatus,
-            lastUpdated: Date.now(),
+          // Create timeout promise
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Document load timeout')), DOC_LOAD_TIMEOUT);
           });
 
-          // For 1st degree connections, also crawl their trust relationships (2nd degree)
-          // Use profilesRef to check existing profiles without causing re-renders
-          if (source === 'trust-given' || source === 'trust-received') {
-            const { trustGiven, trustReceived } = extractTrustUrls(changedDoc);
-            const secondDegreeUrls = new Map<string, string>();
+          // Use repo.find() with timeout (blocks until document is ready or timeout)
+          const handle = await Promise.race([
+            repo.find<UserDocument>(docUrl as AutomergeUrl),
+            timeoutPromise,
+          ]);
 
-            // Combine trust relationships for 2nd degree
-            for (const [did2, url] of trustGiven) {
-              if (did2 !== currentUserDid && !profilesRef.current.has(did2) && !loaded2ndDegreeRef.current.has(did2)) {
-                secondDegreeUrls.set(did2, url);
-              }
-            }
-            for (const [did2, url] of trustReceived) {
-              if (did2 !== currentUserDid && !profilesRef.current.has(did2) && !loaded2ndDegreeRef.current.has(did2)) {
-                secondDegreeUrls.set(did2, url);
-              }
-            }
-
-            // Load 2nd degree profiles
-            for (const [did2, url2] of secondDegreeUrls) {
-              loaded2ndDegreeRef.current.add(did2);
-              loadAndSubscribe(url2, did2, 'network-2nd');
-            }
+          // Verify document was actually loaded
+          const doc = handle.doc();
+          if (!doc) {
+            throw new Error('Document not found or empty');
           }
-        };
 
-        // Subscribe to changes FIRST (before checking doc) to catch network updates
-        handle.on('change', changeHandler);
+          console.log(`[useKnownProfiles] Doc loaded successfully: ${docUrl.substring(0, 30)}...`);
 
-        // Store subscription for cleanup
-        subscriptionsRef.current.set(docUrl, { handle, handler: changeHandler, source });
+          // Process the loaded document
+          await processLoadedDoc(handle, doc, docUrl, expectedDid, source);
 
-        // Check if document is immediately available (from cache)
-        const immediateDoc = handle.doc();
-        if (immediateDoc) {
-          // Document already loaded (e.g., from local cache)
-          console.log(`[useKnownProfiles] Doc immediately available (cached): ${docUrl.substring(0, 30)}...`);
-          updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
-          await changeHandler({ doc: immediateDoc });
-        } else {
-          // Document not yet available - will arrive via change event
-          console.log(`[useKnownProfiles] Doc not cached, waiting for network via change events: ${docUrl.substring(0, 30)}...`);
-          updateTrackedDoc(docUrl, { status: 'pending' });
+          return handle;
+        } catch (err) {
+          console.warn(`[useKnownProfiles] Attempt ${attempt}/${MAX_RETRY_ATTEMPTS} failed for ${docUrl.substring(0, 30)}:`, err);
 
-          if (expectedDid) {
-            updateProfile(expectedDid, {
-              displayName: undefined,
-              avatarUrl: undefined,
-              userDocUrl: docUrl,
-              source,
-              signatureStatus: 'pending',
-              lastUpdated: Date.now(),
-            });
+          if (attempt < MAX_RETRY_ATTEMPTS) {
+            // Wait before retry with exponential backoff
+            const delay = RETRY_DELAY_BASE * Math.pow(2, attempt - 1);
+            console.log(`[useKnownProfiles] Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            // All retries failed
+            console.error(`[useKnownProfiles] All ${MAX_RETRY_ATTEMPTS} attempts failed for: ${docUrl.substring(0, 30)}`);
+            updateTrackedDoc(docUrl, { status: 'timeout', error: String(err) });
+            return null;
           }
-          // No blocking wait - the change handler will update the profile when the doc arrives
         }
-
-        return handle;
-      } catch (err) {
-        console.warn(`[useKnownProfiles] Failed to load UserDoc from ${docUrl}:`, err);
-        updateTrackedDoc(docUrl, { status: 'error', error: String(err) });
-        return null;
       }
+
+      return null;
     },
-    [repo, currentUserDid, updateProfile, updateTrackedDoc]
+    [repo, updateProfile, updateTrackedDoc, processLoadedDoc]
   );
 
   // Register external doc (e.g., from QR scanner)

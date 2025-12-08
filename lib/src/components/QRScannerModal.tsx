@@ -83,82 +83,107 @@ export function QRScannerModal<TData = unknown>({
     }
 
     let cleanup: (() => void) | undefined;
+    let cancelled = false;
 
     const loadAndVerify = async () => {
       setSignatureStatus('loading');
-      try {
-        // Load the UserDocument
-        console.log('[QRScannerModal] Calling repo.findClassic() for:', scannedUserDocUrl?.substring(0, 40));
 
-        // Use findClassic() which returns immediately with a handle (doesn't block like find())
-        // The handle will emit 'change' events when the document arrives from the network
-        const handle = await repo.findClassic<UserDocument>(scannedUserDocUrl as AutomergeUrl);
-        console.log('[QRScannerModal] repo.findClassic() returned handle');
+      // Function to update profile from document
+      const updateFromDoc = async (userDocData: UserDocument | undefined) => {
+        if (!userDocData || !userDocData.profile) {
+          console.log('[QRScannerModal] UserDocument has no profile yet');
+          return false;
+        }
 
-        // Function to update profile from document
-        const updateFromDoc = async (userDoc: UserDocument | undefined) => {
-          if (!userDoc || !userDoc.profile) {
-            console.log('[QRScannerModal] UserDocument has no profile yet');
-            // Don't set status to 'missing' - keep waiting for the doc to arrive
-            return;
+        // Verify the DID matches
+        if (userDocData.did !== scannedDid) {
+          console.warn('[QRScannerModal] DID mismatch in UserDocument');
+          setSignatureStatus('invalid');
+          return false;
+        }
+
+        // Store the profile data from UserDocument
+        console.log('[QRScannerModal] Profile loaded:', userDocData.profile.displayName);
+        setLoadedProfile({
+          displayName: userDocData.profile.displayName,
+          avatarUrl: userDocData.profile.avatarUrl,
+        });
+
+        // Check if profile has a signature
+        if (!userDocData.profile.signature) {
+          setSignatureStatus('missing');
+          return true;
+        }
+
+        // Verify the profile signature
+        const publicKeyBytes = extractPublicKeyFromDid(scannedDid);
+        const publicKeyBase64 = base64Encode(publicKeyBytes);
+        const result = await verifyProfileSignature(userDocData.profile, publicKeyBase64);
+
+        setSignatureStatus(result.valid ? 'valid' : 'invalid');
+        return true;
+      };
+
+      // Use repo.find() with timeout and retry (like AppShell pattern)
+      const DOC_LOAD_TIMEOUT = 8000;
+      const MAX_RETRY_ATTEMPTS = 5;
+      const RETRY_DELAY_BASE = 1000;
+
+      for (let attempt = 1; attempt <= MAX_RETRY_ATTEMPTS && !cancelled; attempt++) {
+        try {
+          console.log(`[QRScannerModal] Loading attempt ${attempt}/${MAX_RETRY_ATTEMPTS} for: ${scannedUserDocUrl?.substring(0, 40)}`);
+
+          if (attempt > 1) {
+            setSignatureStatus('waiting');
           }
 
-          // Verify the DID matches
-          if (userDoc.did !== scannedDid) {
-            console.warn('[QRScannerModal] DID mismatch in UserDocument');
-            setSignatureStatus('invalid');
-            return;
-          }
-
-          // Store the profile data from UserDocument
-          console.log('[QRScannerModal] Profile loaded:', userDoc.profile.displayName);
-          setLoadedProfile({
-            displayName: userDoc.profile.displayName,
-            avatarUrl: userDoc.profile.avatarUrl,
+          // Create timeout promise
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Document load timeout')), DOC_LOAD_TIMEOUT);
           });
 
-          // Check if profile has a signature
-          if (!userDoc.profile.signature) {
-            setSignatureStatus('missing');
-            return;
+          // Use repo.find() with timeout (blocks until document is ready or timeout)
+          const handle = await Promise.race([
+            repo.find<UserDocument>(scannedUserDocUrl as AutomergeUrl),
+            timeoutPromise,
+          ]);
+
+          // Verify document was actually loaded
+          const doc = handle.doc();
+          if (!doc) {
+            throw new Error('Document not found or empty');
           }
 
-          // Verify the profile signature
-          const publicKeyBytes = extractPublicKeyFromDid(scannedDid);
-          const publicKeyBase64 = base64Encode(publicKeyBytes);
-          const result = await verifyProfileSignature(userDoc.profile, publicKeyBase64);
+          console.log('[QRScannerModal] Document loaded successfully');
 
-          setSignatureStatus(result.valid ? 'valid' : 'invalid');
-        };
+          // Update from loaded document
+          await updateFromDoc(doc);
 
-        // Subscribe to changes FIRST (before checking doc) to catch network updates
-        const onChange = () => {
-          console.log('[QRScannerModal] Document changed, updating profile...');
-          updateFromDoc(handle.doc());
-        };
-        handle.on('change', onChange);
+          // Subscribe to future changes for reactive updates
+          const onChange = () => {
+            console.log('[QRScannerModal] Document changed, updating profile...');
+            updateFromDoc(handle.doc());
+          };
+          handle.on('change', onChange);
 
-        cleanup = () => {
-          handle.off('change', onChange);
-        };
+          cleanup = () => {
+            handle.off('change', onChange);
+          };
 
-        // Check if document is already available (from cache)
-        const immediateDoc = handle.doc();
-        if (immediateDoc) {
-          console.log('[QRScannerModal] Document immediately available (cached)');
-          await updateFromDoc(immediateDoc);
-        } else {
-          // Show waiting state - document will arrive via change event
-          console.log('[QRScannerModal] Document not cached, waiting for network...');
-          setSignatureStatus('waiting');
-        }
-      } catch (error) {
-        console.error('[QRScannerModal] Failed to load/verify UserDocument:', error);
-        // Distinguish between network timeout and other errors
-        if (error instanceof Error && error.message.includes('timeout')) {
-          setSignatureStatus('network-error');
-        } else {
-          setSignatureStatus('missing');
+          return; // Success - exit retry loop
+        } catch (error) {
+          console.warn(`[QRScannerModal] Attempt ${attempt}/${MAX_RETRY_ATTEMPTS} failed:`, error);
+
+          if (attempt < MAX_RETRY_ATTEMPTS && !cancelled) {
+            // Wait before retry with exponential backoff
+            const delay = RETRY_DELAY_BASE * Math.pow(2, attempt - 1);
+            console.log(`[QRScannerModal] Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else if (!cancelled) {
+            // All retries failed
+            console.error('[QRScannerModal] All retry attempts failed');
+            setSignatureStatus('network-error');
+          }
         }
       }
     };
@@ -166,6 +191,7 @@ export function QRScannerModal<TData = unknown>({
     loadAndVerify();
 
     return () => {
+      cancelled = true;
       cleanup?.();
     };
   }, [scannedDid, scannedUserDocUrl, repo]);

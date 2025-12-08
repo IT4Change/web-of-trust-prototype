@@ -29,11 +29,11 @@ test.describe('Assumption Flow', () => {
   });
 
   test('should show empty state when no assumptions exist', async ({ page }) => {
-    // On a fresh board, should show empty state
-    const emptyMessage = page.getByText(/no assumptions yet/i);
+    // On a fresh board, should show empty state (German: "Erstelle deine erste Annahme")
+    const emptyMessage = page.getByText(/erste Annahme|no assumptions yet/i);
 
     // Either empty state is visible OR we already have assumptions
-    const hasAssumptions = await page.locator('text=/assumption/i').count() > 1;
+    const hasAssumptions = await page.locator('[data-testid="assumption-card"]').count() > 0;
     if (!hasAssumptions) {
       await expect(emptyMessage).toBeVisible();
     }

@@ -131,9 +131,27 @@ export function QRScannerModal<TData = unknown>({
         setSignatureStatus('waiting');
 
         // Wait for document to arrive from network (proper automerge-repo API!)
+        // Add explicit timeout since whenReady() may hang indefinitely
         console.log('[QRScannerModal] Waiting for document from network...');
-        await handle.whenReady();
-        console.log('[QRScannerModal] Document ready!');
+
+        const timeoutMs = 10000; // 10 seconds
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs);
+        });
+
+        try {
+          await Promise.race([handle.whenReady(), timeoutPromise]);
+          console.log('[QRScannerModal] Document ready!');
+        } catch (timeoutErr) {
+          console.warn('[QRScannerModal] Timeout waiting for document:', timeoutErr);
+          // Check if we got the doc anyway (race condition)
+          const maybeDoc = handle.doc();
+          if (!maybeDoc) {
+            setSignatureStatus('missing');
+            return;
+          }
+          console.log('[QRScannerModal] Document available despite timeout');
+        }
 
         // Now safely access the document
         const userDoc = handle.doc();

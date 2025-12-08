@@ -371,9 +371,19 @@ export function useKnownProfiles({
 
           // Wait for document to load from network using proper automerge-repo API
           // This is critical: handle.whenReady() resolves when the doc is synced
+          // Add explicit timeout since whenReady() may hang indefinitely
           try {
             console.log(`[useKnownProfiles] Calling handle.whenReady() for: ${docUrl.substring(0, 30)}...`);
-            await handle.whenReady();
+
+            // Create a timeout promise
+            const timeoutMs = 10000; // 10 seconds
+            const timeoutPromise = new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs);
+            });
+
+            // Race between whenReady and timeout
+            await Promise.race([handle.whenReady(), timeoutPromise]);
+
             const loadedDoc = handle.doc();
             if (loadedDoc) {
               console.log(`[useKnownProfiles] Doc ready from network: ${docUrl.substring(0, 30)}...`);
@@ -385,7 +395,7 @@ export function useKnownProfiles({
             }
           } catch (err) {
             // Timeout or error waiting for doc - placeholder remains
-            console.warn(`[useKnownProfiles] Timeout waiting for doc: ${docUrl.substring(0, 30)}...`);
+            console.warn(`[useKnownProfiles] Timeout/error waiting for doc: ${docUrl.substring(0, 30)}...`, err);
             updateTrackedDoc(docUrl, { status: 'timeout', error: String(err) });
           }
         }

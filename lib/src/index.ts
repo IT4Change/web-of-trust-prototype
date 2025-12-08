@@ -52,6 +52,8 @@ export {
   type ProfileSignatureStatus,
   type UseKnownProfilesOptions,
   type UseKnownProfilesResult,
+  type DocLoadStatus,
+  type TrackedDocInfo,
 } from './hooks/useKnownProfiles';
 export {
   useUserDocument,

@@ -52,6 +52,20 @@ export interface UseKnownProfilesOptions {
   workspaceDoc?: BaseDocument | null;
 }
 
+/** Status of a UserDoc being loaded */
+export type DocLoadStatus = 'pending' | 'loading' | 'ready' | 'error' | 'timeout';
+
+/** Debug info for a tracked UserDoc */
+export interface TrackedDocInfo {
+  url: string;
+  expectedDid: string | null;
+  source: ProfileSource;
+  status: DocLoadStatus;
+  startedAt: number;
+  readyAt?: number;
+  error?: string;
+}
+
 /** Return type for useKnownProfiles hook */
 export interface UseKnownProfilesResult {
   /** All known profiles indexed by DID */
@@ -62,6 +76,8 @@ export interface UseKnownProfilesResult {
   isLoading: boolean;
   /** Register an external UserDoc URL for reactive updates (e.g., from QR scanner) */
   registerExternalDoc: (userDocUrl: string) => void;
+  /** Debug: All tracked UserDocs with their load status */
+  trackedDocs: Map<string, TrackedDocInfo>;
 }
 
 // Internal type for subscription management
@@ -141,6 +157,7 @@ export function useKnownProfiles({
 }: UseKnownProfilesOptions): UseKnownProfilesResult {
   const [profiles, setProfiles] = useState<Map<string, KnownProfile>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
+  const [trackedDocs, setTrackedDocs] = useState<Map<string, TrackedDocInfo>>(new Map());
 
   // Track subscriptions for cleanup
   const subscriptionsRef = useRef<Map<string, ProfileSubscription>>(new Map());
@@ -150,6 +167,47 @@ export function useKnownProfiles({
 
   // Track loaded 2nd degree DIDs to avoid re-loading
   const loaded2ndDegreeRef = useRef<Set<string>>(new Set());
+
+  // Helper to update tracked doc status
+  const updateTrackedDoc = useCallback(
+    (url: string, update: Partial<TrackedDocInfo>) => {
+      setTrackedDocs((prev) => {
+        const newMap = new Map(prev);
+        const existing = newMap.get(url);
+        if (existing) {
+          newMap.set(url, { ...existing, ...update });
+        } else if (update.expectedDid !== undefined && update.source !== undefined) {
+          // New entry
+          newMap.set(url, {
+            url,
+            expectedDid: update.expectedDid ?? null,
+            source: update.source!,
+            status: update.status ?? 'pending',
+            startedAt: update.startedAt ?? Date.now(),
+            ...update,
+          });
+        }
+        return newMap;
+      });
+    },
+    []
+  );
+
+  // Log tracked docs summary whenever it changes
+  useEffect(() => {
+    if (trackedDocs.size === 0) return;
+
+    const summary = Array.from(trackedDocs.values()).map((doc) => ({
+      url: doc.url.substring(0, 25) + '...',
+      did: doc.expectedDid?.substring(0, 20) || '(unknown)',
+      source: doc.source,
+      status: doc.status,
+      duration: doc.readyAt ? `${doc.readyAt - doc.startedAt}ms` : 'pending',
+    }));
+
+    console.log('[useKnownProfiles] Tracked docs:', summary);
+    console.table(summary);
+  }, [trackedDocs]);
 
   // Helper to update a profile in state
   const updateProfile = useCallback(
@@ -220,6 +278,17 @@ export function useKnownProfiles({
         return subscriptionsRef.current.get(docUrl)!.handle;
       }
 
+      // Track this doc as loading
+      const startedAt = Date.now();
+      updateTrackedDoc(docUrl, {
+        expectedDid,
+        source,
+        status: 'loading',
+        startedAt,
+      });
+
+      console.log(`[useKnownProfiles] Loading doc: ${docUrl.substring(0, 30)}... (expected DID: ${expectedDid?.substring(0, 20) || 'unknown'})`);
+
       try {
         const handle = await repo.find<UserDocument>(docUrl as AutomergeUrl);
 
@@ -281,9 +350,14 @@ export function useKnownProfiles({
         const immediateDoc = handle.doc();
         if (immediateDoc) {
           // Document already loaded (e.g., from local cache)
+          console.log(`[useKnownProfiles] Doc immediately available (cached): ${docUrl.substring(0, 30)}...`);
+          updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
           await changeHandler({ doc: immediateDoc });
         } else {
           // Document not yet available - create placeholder and wait for it
+          console.log(`[useKnownProfiles] Doc not cached, waiting for network: ${docUrl.substring(0, 30)}...`);
+          updateTrackedDoc(docUrl, { status: 'pending' });
+
           if (expectedDid) {
             updateProfile(expectedDid, {
               displayName: undefined,
@@ -298,24 +372,32 @@ export function useKnownProfiles({
           // Wait for document to load from network using proper automerge-repo API
           // This is critical: handle.whenReady() resolves when the doc is synced
           try {
+            console.log(`[useKnownProfiles] Calling handle.whenReady() for: ${docUrl.substring(0, 30)}...`);
             await handle.whenReady();
             const loadedDoc = handle.doc();
             if (loadedDoc) {
+              console.log(`[useKnownProfiles] Doc ready from network: ${docUrl.substring(0, 30)}...`);
+              updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
               await changeHandler({ doc: loadedDoc });
+            } else {
+              console.warn(`[useKnownProfiles] Doc ready but no content: ${docUrl.substring(0, 30)}...`);
+              updateTrackedDoc(docUrl, { status: 'error', error: 'Ready but no content' });
             }
-          } catch {
+          } catch (err) {
             // Timeout or error waiting for doc - placeholder remains
             console.warn(`[useKnownProfiles] Timeout waiting for doc: ${docUrl.substring(0, 30)}...`);
+            updateTrackedDoc(docUrl, { status: 'timeout', error: String(err) });
           }
         }
 
         return handle;
       } catch (err) {
         console.warn(`[useKnownProfiles] Failed to load UserDoc from ${docUrl}:`, err);
+        updateTrackedDoc(docUrl, { status: 'error', error: String(err) });
         return null;
       }
     },
-    [repo, currentUserDid, updateProfile]
+    [repo, currentUserDid, updateProfile, updateTrackedDoc]
   );
 
   // Register external doc (e.g., from QR scanner)
@@ -495,5 +577,6 @@ export function useKnownProfiles({
     getProfile,
     isLoading,
     registerExternalDoc,
+    trackedDocs,
   };
 }

@@ -74,8 +74,12 @@ export function QRScannerModal<TData = unknown>({
     }
 
     // Register with central profile management for reactive updates
+    console.log('[QRScannerModal] registerExternalDoc available:', !!registerExternalDoc, 'userDocUrl:', scannedUserDocUrl?.substring(0, 30));
     if (registerExternalDoc) {
+      console.log('[QRScannerModal] Calling registerExternalDoc with:', scannedUserDocUrl?.substring(0, 40));
       registerExternalDoc(scannedUserDocUrl);
+    } else {
+      console.warn('[QRScannerModal] registerExternalDoc is undefined - cannot register for reactive updates');
     }
 
     let cleanup: (() => void) | undefined;

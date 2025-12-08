@@ -376,7 +376,7 @@ export function useKnownProfiles({
             console.log(`[useKnownProfiles] Calling handle.whenReady() for: ${docUrl.substring(0, 30)}...`);
 
             // Create a timeout promise
-            const timeoutMs = 10000; // 10 seconds
+            const timeoutMs = 60000; // 60 seconds - sync can take up to a minute
             const timeoutPromise = new Promise<never>((_, reject) => {
               setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs);
             });

@@ -134,7 +134,7 @@ export function QRScannerModal<TData = unknown>({
         // Add explicit timeout since whenReady() may hang indefinitely
         console.log('[QRScannerModal] Waiting for document from network...');
 
-        const timeoutMs = 10000; // 10 seconds
+        const timeoutMs = 60000; // 60 seconds - sync can take up to a minute
         const timeoutPromise = new Promise<never>((_, reject) => {
           setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs);
         });

@@ -52,30 +52,6 @@ export interface UseKnownProfilesOptions {
   workspaceDoc?: BaseDocument | null;
 }
 
-/** Status of a UserDoc being loaded */
-export type DocLoadStatus = 'pending' | 'loading' | 'ready' | 'error' | 'timeout';
-
-/** Debug info for a tracked UserDoc */
-export interface TrackedDocInfo {
-  url: string;
-  expectedDid: string | null;
-  source: ProfileSource;
-  status: DocLoadStatus;
-  startedAt: number;
-  readyAt?: number;
-  error?: string;
-  attempt?: number;
-}
-
-/** Timeout for a single document loading attempt (ms) */
-const DOC_LOAD_TIMEOUT = 8000;
-
-/** Max retry attempts for document loading */
-const MAX_RETRY_ATTEMPTS = 10;
-
-/** Delay between retries (ms) - exponential backoff starting point */
-const RETRY_DELAY_BASE = 1000;
-
 /** Return type for useKnownProfiles hook */
 export interface UseKnownProfilesResult {
   /** All known profiles indexed by DID */
@@ -86,8 +62,6 @@ export interface UseKnownProfilesResult {
   isLoading: boolean;
   /** Register an external UserDoc URL for reactive updates (e.g., from QR scanner) */
   registerExternalDoc: (userDocUrl: string) => void;
-  /** Debug: All tracked UserDocs with their load status */
-  trackedDocs: Map<string, TrackedDocInfo>;
 }
 
 // Internal type for subscription management
@@ -96,6 +70,15 @@ interface ProfileSubscription {
   handler: (payload: { doc: UserDocument }) => void;
   source: ProfileSource;
 }
+
+/** Timeout for a single document loading attempt (ms) */
+const DOC_LOAD_TIMEOUT = 8000;
+
+/** Max retry attempts for document loading */
+const MAX_RETRY_ATTEMPTS = 10;
+
+/** Delay between retries (ms) - exponential backoff starting point */
+const RETRY_DELAY_BASE = 1000;
 
 /**
  * Verify a user profile signature
@@ -167,7 +150,6 @@ export function useKnownProfiles({
 }: UseKnownProfilesOptions): UseKnownProfilesResult {
   const [profiles, setProfiles] = useState<Map<string, KnownProfile>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
-  const [trackedDocs, setTrackedDocs] = useState<Map<string, TrackedDocInfo>>(new Map());
 
   // Track subscriptions for cleanup
   const subscriptionsRef = useRef<Map<string, ProfileSubscription>>(new Map());
@@ -178,58 +160,9 @@ export function useKnownProfiles({
   // Track loaded 2nd degree DIDs to avoid re-loading
   const loaded2ndDegreeRef = useRef<Set<string>>(new Set());
 
-  // Helper to update tracked doc status
-  const updateTrackedDoc = useCallback(
-    (url: string, update: Partial<TrackedDocInfo>) => {
-      setTrackedDocs((prev) => {
-        const newMap = new Map(prev);
-        const existing = newMap.get(url);
-        if (existing) {
-          newMap.set(url, { ...existing, ...update });
-        } else if (update.expectedDid !== undefined && update.source !== undefined) {
-          // New entry
-          newMap.set(url, {
-            url,
-            expectedDid: update.expectedDid ?? null,
-            source: update.source!,
-            status: update.status ?? 'pending',
-            startedAt: update.startedAt ?? Date.now(),
-            ...update,
-          });
-        }
-        return newMap;
-      });
-    },
-    []
-  );
-
-  // Log tracked docs summary whenever it changes
-  useEffect(() => {
-    if (trackedDocs.size === 0) return;
-
-    const summary = Array.from(trackedDocs.values()).map((doc) => ({
-      url: doc.url.substring(0, 25) + '...',
-      did: doc.expectedDid?.substring(0, 20) || '(unknown)',
-      source: doc.source,
-      status: doc.status,
-      duration: doc.readyAt ? `${doc.readyAt - doc.startedAt}ms` : 'pending',
-    }));
-
-    console.log('[useKnownProfiles] Tracked docs:', summary);
-    console.table(summary);
-  }, [trackedDocs]);
-
   // Helper to update a profile in state
   const updateProfile = useCallback(
     (did: string, profile: Omit<KnownProfile, 'did'>) => {
-      console.log('[useKnownProfiles] updateProfile called:', {
-        did: did.substring(0, 30),
-        displayName: profile.displayName,
-        avatarUrl: !!profile.avatarUrl,
-        source: profile.source,
-        signatureStatus: profile.signatureStatus,
-      });
-
       setProfiles((prev) => {
         const newMap = new Map(prev);
         const existing = newMap.get(did);
@@ -247,7 +180,6 @@ export function useKnownProfiles({
         if (existing && sourcePriority[existing.source] > sourcePriority[profile.source]) {
           // Keep existing profile with higher priority source, but update profile data if new is fresher
           if (profile.lastUpdated > existing.lastUpdated) {
-            console.log('[useKnownProfiles] Updating existing profile (fresher data):', did.substring(0, 30));
             newMap.set(did, {
               ...existing,
               displayName: profile.displayName ?? existing.displayName,
@@ -255,13 +187,10 @@ export function useKnownProfiles({
               signatureStatus: profile.signatureStatus,
               lastUpdated: profile.lastUpdated,
             });
-          } else {
-            console.log('[useKnownProfiles] Skipping update (existing has higher priority):', did.substring(0, 30));
           }
           return newMap;
         }
 
-        console.log('[useKnownProfiles] Setting new profile:', did.substring(0, 30));
         newMap.set(did, { did, ...profile });
         return newMap;
       });
@@ -277,7 +206,35 @@ export function useKnownProfiles({
     profilesRef.current = profiles;
   }, [profiles]);
 
-  // Helper to process a loaded UserDoc and set up subscription
+  // Single document load attempt (same pattern as AppShell's loadDocumentWithRetry)
+  const loadDocumentOnce = useCallback(
+    async (docUrl: string): Promise<{ handle: DocHandle<UserDocument>; doc: UserDocument } | null> => {
+      if (!repo) return null;
+
+      try {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Document load timeout')), DOC_LOAD_TIMEOUT);
+        });
+
+        const handle = await Promise.race([
+          repo.find<UserDocument>(docUrl as AutomergeUrl),
+          timeoutPromise,
+        ]);
+
+        const doc = handle.doc();
+        if (!doc) {
+          throw new Error('Document not found or empty');
+        }
+
+        return { handle, doc };
+      } catch {
+        return null;
+      }
+    },
+    [repo]
+  );
+
+  // Process a loaded document and set up subscription
   const processLoadedDoc = useCallback(
     async (
       handle: DocHandle<UserDocument>,
@@ -291,9 +248,6 @@ export function useKnownProfiles({
         console.warn(`[useKnownProfiles] DID mismatch: expected ${expectedDid}, got ${did}`);
         return;
       }
-
-      // Mark as ready
-      updateTrackedDoc(docUrl, { status: 'ready', readyAt: Date.now() });
 
       const signatureStatus = doc.profile
         ? await verifyUserProfileSignature(doc.profile, did)
@@ -311,8 +265,6 @@ export function useKnownProfiles({
       // Set up change handler for reactive updates
       const changeHandler = async ({ doc: changedDoc }: { doc: UserDocument }) => {
         if (!changedDoc) return;
-
-        console.log(`[useKnownProfiles] Change event for: ${docUrl.substring(0, 30)}...`);
 
         const changedSignatureStatus = changedDoc.profile
           ? await verifyUserProfileSignature(changedDoc.profile, changedDoc.did)
@@ -357,36 +309,7 @@ export function useKnownProfiles({
         }
       }
     },
-    [currentUserDid, updateProfile, updateTrackedDoc]
-  );
-
-  // Single document load attempt (same pattern as AppShell's loadDocumentWithRetry)
-  const loadDocumentOnce = useCallback(
-    async (docUrl: string): Promise<{ handle: DocHandle<UserDocument>; doc: UserDocument } | null> => {
-      if (!repo) return null;
-
-      try {
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error('Document load timeout')), DOC_LOAD_TIMEOUT);
-        });
-
-        const handle = await Promise.race([
-          repo.find<UserDocument>(docUrl as AutomergeUrl),
-          timeoutPromise,
-        ]);
-
-        const doc = handle.doc();
-        if (!doc) {
-          throw new Error('Document not found or empty');
-        }
-
-        return { handle, doc };
-      } catch (error) {
-        console.warn(`[useKnownProfiles] Load attempt failed for ${docUrl.substring(0, 30)}:`, error);
-        return null;
-      }
-    },
-    [repo]
+    [currentUserDid, updateProfile]
   );
 
   // Helper to load a UserDoc with retry logic (exact same pattern as AppShell)
@@ -399,18 +322,6 @@ export function useKnownProfiles({
       if (subscriptionsRef.current.has(docUrl)) {
         return subscriptionsRef.current.get(docUrl)!.handle;
       }
-
-      // Track this doc as loading
-      const startedAt = Date.now();
-      updateTrackedDoc(docUrl, {
-        expectedDid,
-        source,
-        status: 'loading',
-        startedAt,
-        attempt: 1,
-      });
-
-      console.log(`[useKnownProfiles] Loading doc: ${docUrl.substring(0, 30)}... (expected DID: ${expectedDid?.substring(0, 20) || 'unknown'})`);
 
       // Create placeholder profile while loading
       if (expectedDid) {
@@ -426,12 +337,8 @@ export function useKnownProfiles({
 
       // Retry loop with timeout (exact same pattern as AppShell)
       for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
-        console.log(`[useKnownProfiles] Loading attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS} for: ${docUrl.substring(0, 30)}...`);
-        updateTrackedDoc(docUrl, { attempt: attempt + 1 });
-
         const result = await loadDocumentOnce(docUrl);
         if (result) {
-          console.log(`[useKnownProfiles] Doc loaded successfully: ${docUrl.substring(0, 30)}...`);
           await processLoadedDoc(result.handle, result.doc, docUrl, expectedDid, source);
           return result.handle;
         }
@@ -439,31 +346,21 @@ export function useKnownProfiles({
         // Wait before next retry (exponential backoff) - same formula as AppShell
         if (attempt < MAX_RETRY_ATTEMPTS - 1) {
           const delay = RETRY_DELAY_BASE * Math.pow(2, attempt);
-          console.log(`[useKnownProfiles] Waiting ${delay}ms before retry...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
 
-      // All retries failed
-      console.error(`[useKnownProfiles] All ${MAX_RETRY_ATTEMPTS} attempts failed for: ${docUrl.substring(0, 30)}`);
-      updateTrackedDoc(docUrl, { status: 'timeout', error: 'All retries exhausted' });
       return null;
     },
-    [repo, updateProfile, updateTrackedDoc, processLoadedDoc, loadDocumentOnce]
+    [repo, updateProfile, processLoadedDoc, loadDocumentOnce]
   );
 
   // Register external doc (e.g., from QR scanner)
   const registerExternalDoc = useCallback(
     (userDocUrl: string) => {
-      console.log(`[useKnownProfiles] registerExternalDoc called: ${userDocUrl.substring(0, 40)}...`);
-
-      if (externalDocsRef.current.has(userDocUrl)) {
-        console.log(`[useKnownProfiles] Doc already registered, skipping: ${userDocUrl.substring(0, 40)}...`);
-        return;
-      }
+      if (externalDocsRef.current.has(userDocUrl)) return;
       externalDocsRef.current.add(userDocUrl);
 
-      console.log(`[useKnownProfiles] Starting loadAndSubscribe for: ${userDocUrl.substring(0, 40)}...`);
       // Load and subscribe
       loadAndSubscribe(userDocUrl, null, 'external');
     },
@@ -635,6 +532,5 @@ export function useKnownProfiles({
     getProfile,
     isLoading,
     registerExternalDoc,
-    trackedDocs,
   };
 }

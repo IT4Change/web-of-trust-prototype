@@ -138,24 +138,24 @@ export function StartContent({
             </div>
           </div>
 
-          {/* Info: Workspace */}
+          {/* Info: Space */}
           <p className="text-sm text-base-content/70 text-center px-4">
-            Ein Workspace ist ein geteilter Raum, wo alle Teilnehmer gemeinsam arbeiten und den gleichen Content sehen.
+            Ein Space ist ein geteilter Raum, wo alle Teilnehmer gemeinsam arbeiten und den gleichen Content sehen.
           </p>
 
-          {/* Workspace Card */}
+          {/* Space Card */}
           <div className="card bg-base-100 shadow-lg">
             <div className="card-body">
               <div className="flex items-center gap-2 mb-2">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M5.566 4.657A4.505 4.505 0 016.75 4.5h10.5c.41 0 .806.055 1.183.157A3 3 0 0015.75 3h-7.5a3 3 0 00-2.684 1.657zM2.25 12a3 3 0 013-3h13.5a3 3 0 013 3v6a3 3 0 01-3 3H5.25a3 3 0 01-3-3v-6zM5.25 7.5c-.41 0-.806.055-1.184.157A3 3 0 016.75 6h10.5a3 3 0 012.683 1.657A4.505 4.505 0 0018.75 7.5H5.25z"/>
                 </svg>
-                <span className="font-semibold">Workspace</span>
+                <span className="font-semibold">Space</span>
               </div>
               {!showCreateInput ? (
                 <>
                   <p className="text-sm text-base-content/60 mb-3">
-                    Trete einem Workspace über einen Einladungslink bei oder erstelle einen neuen.
+                    Trete einem Space über einen Einladungslink bei oder erstelle einen neuen.
                   </p>
                   <button
                     className="btn btn-outline w-full h-auto py-3 gap-2"
@@ -164,7 +164,7 @@ export function StartContent({
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
-                    <span>Workspace erstellen</span>
+                    <span>Space erstellen</span>
                   </button>
                 </>
               ) : (
@@ -172,7 +172,7 @@ export function StartContent({
                   <input
                     type="text"
                     className="input input-bordered w-full"
-                    placeholder="Name des Workspace"
+                    placeholder="Name des Space"
                     value={workspaceName}
                     onChange={(e) => setWorkspaceName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && workspaceName.trim() && handleCreateSubmit()}

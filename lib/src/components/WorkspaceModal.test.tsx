@@ -304,24 +304,24 @@ describe('WorkspaceModal logic', () => {
         name: 'My Workspace',
         lastAccessed: Date.now(),
       };
-      const displayName = workspace?.name || 'Workspace';
+      const displayName = workspace?.name || 'Space';
       expect(displayName).toBe('My Workspace');
     });
 
-    it('should use "Workspace" as fallback when no name', () => {
+    it('should use "Space" as fallback when no name', () => {
       const workspace: WorkspaceInfo | null = null;
-      const displayName = workspace?.name || 'Workspace';
-      expect(displayName).toBe('Workspace');
+      const displayName = workspace?.name || 'Space';
+      expect(displayName).toBe('Space');
     });
 
-    it('should use "Workspace" as fallback for empty name', () => {
+    it('should use "Space" as fallback for empty name', () => {
       const workspace: WorkspaceInfo = {
         id: 'ws1',
         name: '',
         lastAccessed: Date.now(),
       };
-      const displayName = workspace?.name || 'Workspace';
-      expect(displayName).toBe('Workspace');
+      const displayName = workspace?.name || 'Space';
+      expect(displayName).toBe('Space');
     });
   });
 

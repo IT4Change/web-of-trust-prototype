@@ -172,6 +172,13 @@ export function AppNavbar<TData = unknown>({
     onToggleUserVisibility?.(did);
   }, [onToggleUserVisibility]);
 
+  // Close dropdown by removing focus from the active element
+  const closeDropdown = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  };
+
   return (
     <>
       <div className="navbar bg-base-100 shadow-lg z-[1100] flex-shrink-0 sticky top-0">
@@ -237,7 +244,7 @@ export function AppNavbar<TData = unknown>({
               className="menu menu-sm dropdown-content bg-base-100 rounded-box z-[1] mt-6 w-52 p-2 shadow"
             >
               <li>
-                <a onClick={() => openProfile(currentUserDid)}>
+                <a onClick={() => { closeDropdown(); openProfile(currentUserDid); }}>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-5 w-5"
@@ -256,7 +263,7 @@ export function AppNavbar<TData = unknown>({
                 </a>
               </li>
               <li>
-                <a onClick={() => setShowCollaboratorsModal(true)}>
+                <a onClick={() => { closeDropdown(); setShowCollaboratorsModal(true); }}>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-5 w-5"
@@ -275,7 +282,7 @@ export function AppNavbar<TData = unknown>({
                 </a>
               </li>
               <li>
-                <a onClick={() => setShowVerifyModal(true)}>
+                <a onClick={() => { closeDropdown(); setShowVerifyModal(true); }}>
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-5 w-5"
@@ -302,7 +309,7 @@ export function AppNavbar<TData = unknown>({
                 <>
                   <div className="divider my-1"></div>
                   <li>
-                    <a onClick={onToggleDebugDashboard}>
+                    <a onClick={() => { closeDropdown(); onToggleDebugDashboard(); }}>
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         className="h-5 w-5"

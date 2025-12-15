@@ -308,10 +308,10 @@ function AppLayoutInner<TDoc extends BaseDocument<unknown>>({
 
   // Dynamic browser title and favicon based on workspace or start state
   const { titleToShow, faviconUrl } = useMemo(() => {
-    // Start state: show "Start - Web of Trust" with home icon
+    // Start state: show "Web of Trust" with home icon
     if (isStartState) {
       return {
-        titleToShow: 'Start - Web of Trust',
+        titleToShow: 'Web of Trust',
         faviconUrl: generateHomeFavicon(),
       };
     }

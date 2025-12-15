@@ -25,26 +25,23 @@ function determineContentState(
 
 /**
  * Helper function that mirrors the WorkspaceLoadingState building logic
+ * (Updated for simplified seconds-based loading UI)
  */
 function buildWorkspaceLoadingState(
   isLoading: boolean,
-  loadingDocId: string | null,
-  retryCount: number,
-  elapsedTime: number,
+  workspaceUrl: string | null,
+  secondsElapsed: number,
   onCreateNew: () => void,
-  maxAttempts = 10,
-  showCreateNewAfter = 20000
+  showCreateNewAfterSeconds = 60
 ): WorkspaceLoadingState | undefined {
   if (!isLoading) return undefined;
 
   return {
     isLoading: true,
-    documentId: loadingDocId || undefined,
-    attempt: retryCount + 1,
-    maxAttempts,
-    elapsedTime,
+    documentUrl: workspaceUrl || undefined,
+    secondsElapsed,
     onCreateNew,
-    showCreateNewAfter,
+    showCreateNewAfterSeconds,
   };
 }
 
@@ -156,7 +153,6 @@ describe('WorkspaceLoadingState', () => {
         false,
         null,
         0,
-        0,
         mockOnCreateNew
       );
 
@@ -167,63 +163,54 @@ describe('WorkspaceLoadingState', () => {
       const result = buildWorkspaceLoadingState(
         true,
         'automerge:test-doc',
-        2,
-        5000,
+        15,
         mockOnCreateNew
       );
 
       expect(result).toBeDefined();
       expect(result?.isLoading).toBe(true);
-      expect(result?.documentId).toBe('automerge:test-doc');
-      expect(result?.attempt).toBe(3); // retryCount + 1
-      expect(result?.elapsedTime).toBe(5000);
+      expect(result?.documentUrl).toBe('automerge:test-doc');
+      expect(result?.secondsElapsed).toBe(15);
     });
 
-    it('should handle null loadingDocId', () => {
+    it('should handle null workspaceUrl', () => {
       const result = buildWorkspaceLoadingState(
         true,
         null,
-        0,
-        1000,
+        5,
         mockOnCreateNew
       );
 
-      expect(result?.documentId).toBeUndefined();
+      expect(result?.documentUrl).toBeUndefined();
     });
 
-    it('should use default maxAttempts and showCreateNewAfter', () => {
+    it('should use default showCreateNewAfterSeconds', () => {
       const result = buildWorkspaceLoadingState(
         true,
-        'doc-id',
-        0,
+        'automerge:doc-id',
         0,
         mockOnCreateNew
       );
 
-      expect(result?.maxAttempts).toBe(10);
-      expect(result?.showCreateNewAfter).toBe(20000);
+      expect(result?.showCreateNewAfterSeconds).toBe(60);
     });
 
-    it('should allow custom maxAttempts and showCreateNewAfter', () => {
+    it('should allow custom showCreateNewAfterSeconds', () => {
       const result = buildWorkspaceLoadingState(
         true,
-        'doc-id',
-        0,
+        'automerge:doc-id',
         0,
         mockOnCreateNew,
-        5,
-        10000
+        30
       );
 
-      expect(result?.maxAttempts).toBe(5);
-      expect(result?.showCreateNewAfter).toBe(10000);
+      expect(result?.showCreateNewAfterSeconds).toBe(30);
     });
 
     it('should provide onCreateNew callback', () => {
       const result = buildWorkspaceLoadingState(
         true,
-        'doc-id',
-        0,
+        'automerge:doc-id',
         0,
         mockOnCreateNew
       );
@@ -233,60 +220,55 @@ describe('WorkspaceLoadingState', () => {
       expect(mockOnCreateNew).toHaveBeenCalledOnce();
     });
 
-    it('should track retry attempts correctly', () => {
-      // First attempt (retryCount = 0)
-      let result = buildWorkspaceLoadingState(true, 'doc', 0, 0, mockOnCreateNew);
-      expect(result?.attempt).toBe(1);
+    it('should track seconds elapsed', () => {
+      // Initial load
+      let result = buildWorkspaceLoadingState(true, 'automerge:doc', 0, mockOnCreateNew);
+      expect(result?.secondsElapsed).toBe(0);
 
-      // Third attempt (retryCount = 2)
-      result = buildWorkspaceLoadingState(true, 'doc', 2, 0, mockOnCreateNew);
-      expect(result?.attempt).toBe(3);
+      // After 30 seconds
+      result = buildWorkspaceLoadingState(true, 'automerge:doc', 30, mockOnCreateNew);
+      expect(result?.secondsElapsed).toBe(30);
 
-      // Last attempt (retryCount = 9 for max 10)
-      result = buildWorkspaceLoadingState(true, 'doc', 9, 0, mockOnCreateNew);
-      expect(result?.attempt).toBe(10);
+      // After 60 seconds
+      result = buildWorkspaceLoadingState(true, 'automerge:doc', 60, mockOnCreateNew);
+      expect(result?.secondsElapsed).toBe(60);
     });
   });
 
-  describe('elapsed time tracking', () => {
-    it('should track elapsed time for loading display', () => {
+  describe('seconds elapsed tracking', () => {
+    it('should track seconds for loading display', () => {
       const result = buildWorkspaceLoadingState(
         true,
-        'doc-id',
-        0,
-        15000, // 15 seconds elapsed
+        'automerge:doc-id',
+        45,
         mockOnCreateNew
       );
 
-      expect(result?.elapsedTime).toBe(15000);
+      expect(result?.secondsElapsed).toBe(45);
     });
 
     it('should determine when to show create new option', () => {
-      const showAfter = 20000; // 20 seconds
+      const showAfterSeconds = 60;
 
-      // Before threshold
+      // Before threshold (30 seconds)
       let result = buildWorkspaceLoadingState(
         true,
-        'doc-id',
-        0,
-        15000,
+        'automerge:doc-id',
+        30,
         mockOnCreateNew,
-        10,
-        showAfter
+        showAfterSeconds
       );
-      expect(result!.elapsedTime < result!.showCreateNewAfter).toBe(true);
+      expect(result!.secondsElapsed < result!.showCreateNewAfterSeconds).toBe(true);
 
-      // After threshold
+      // After threshold (90 seconds)
       result = buildWorkspaceLoadingState(
         true,
-        'doc-id',
-        0,
-        25000,
+        'automerge:doc-id',
+        90,
         mockOnCreateNew,
-        10,
-        showAfter
+        showAfterSeconds
       );
-      expect(result!.elapsedTime >= result!.showCreateNewAfter).toBe(true);
+      expect(result!.secondsElapsed >= result!.showCreateNewAfterSeconds).toBe(true);
     });
   });
 });
@@ -559,7 +541,7 @@ describe('WorkspaceSwitcher Start state', () => {
   }
 
   function getDisplayName(state: WorkspaceSwitcherState): string {
-    return state.isStart ? 'Start' : (state.currentWorkspace?.name || 'Workspace');
+    return state.isStart ? 'Web of Trust' : (state.currentWorkspace?.name || 'Space');
   }
 
   function shouldShowStartEntry(state: WorkspaceSwitcherState): boolean {
@@ -567,14 +549,14 @@ describe('WorkspaceSwitcher Start state', () => {
     return state.workspaces.length > 0 && !state.isStart;
   }
 
-  it('should show "Start" as display name when in start state', () => {
+  it('should show "Web of Trust" as display name when in start state', () => {
     const state: WorkspaceSwitcherState = {
       isStart: true,
       currentWorkspace: null,
       workspaces: [],
     };
 
-    expect(getDisplayName(state)).toBe('Start');
+    expect(getDisplayName(state)).toBe('Web of Trust');
   });
 
   it('should show workspace name when not in start state', () => {
@@ -587,14 +569,14 @@ describe('WorkspaceSwitcher Start state', () => {
     expect(getDisplayName(state)).toBe('My Workspace');
   });
 
-  it('should fallback to "Workspace" when no current workspace', () => {
+  it('should fallback to "Space" when no current workspace', () => {
     const state: WorkspaceSwitcherState = {
       isStart: false,
       currentWorkspace: null,
       workspaces: [],
     };
 
-    expect(getDisplayName(state)).toBe('Workspace');
+    expect(getDisplayName(state)).toBe('Space');
   });
 
   it('should show start entry when workspaces exist and not in start state', () => {

@@ -36,7 +36,14 @@ export function WorkspaceSwitcher({
   isStart = false,
   onGoToStart,
 }: WorkspaceSwitcherProps) {
-  const displayName = isStart ? 'Start' : (currentWorkspace?.name || 'Workspace');
+  const displayName = isStart ? 'Web of Trust' : (currentWorkspace?.name || 'Space');
+
+  // Close dropdown by removing focus from the active element
+  const closeDropdown = () => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  };
 
   return (
     <div className="dropdown">
@@ -91,35 +98,39 @@ export function WorkspaceSwitcher({
         tabIndex={0}
         className="dropdown-content menu bg-base-100 rounded-box z-2000 mt-4 w-64 p-2 shadow-lg"
       >
-        {/* Start entry - shown when in start state */}
-        {isStart && (
-          <>
-            <li className="menu-title text-xs opacity-50 px-2 pt-1">
-              Aktueller Bereich
-            </li>
-            <li>
-              <a className="flex items-center gap-2 bg-base-200">
-                <div className="w-8 h-8 rounded bg-success/20 flex items-center justify-center shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                  </svg>
-                </div>
-                <span className="truncate font-medium flex-1">Start</span>
-              </a>
-            </li>
-          </>
+        {/* Web of Trust - always shown first */}
+        {(showStartEntry || isStart) && (
+          <li>
+            <a
+              className={`flex items-center gap-2 ${isStart ? 'bg-base-200' : ''}`}
+              onClick={() => {
+                closeDropdown();
+                if (!isStart) onGoToStart?.();
+              }}
+            >
+              <div className="w-8 h-8 rounded bg-success/20 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+              </div>
+              <span className="truncate font-medium flex-1">Web of Trust</span>
+            </a>
+          </li>
         )}
 
-        {/* Current workspace - click opens modal */}
+        {/* Current Space - click opens modal */}
         {!isStart && currentWorkspace && (
           <>
-            <li className="menu-title text-xs opacity-50 px-2 pt-1">
-              Aktueller Workspace
+            <li className="menu-title text-xs opacity-80 px-2 pt-3">
+              Aktueller Space
             </li>
             <li>
               <a
                 className="flex items-center gap-2 bg-base-200"
-                onClick={() => onOpenWorkspaceModal?.()}
+                onClick={() => {
+                  closeDropdown();
+                  onOpenWorkspaceModal?.();
+                }}
               >
                 {currentWorkspace.avatar ? (
                   <div className="w-8 h-8 rounded overflow-hidden shrink-0">
@@ -147,11 +158,11 @@ export function WorkspaceSwitcher({
           </>
         )}
 
-        {/* Other workspaces */}
+        {/* Other Spaces */}
         {workspaces.filter((w) => w.id !== currentWorkspace?.id).length > 0 && (
           <>
-            <li className="menu-title text-xs opacity-50 px-2 pt-3">
-              Andere Workspaces
+            <li className="menu-title text-xs opacity-80 px-2 pt-3">
+              Andere Spaces
             </li>
             {workspaces
               .filter((w) => w.id !== currentWorkspace?.id)
@@ -160,7 +171,10 @@ export function WorkspaceSwitcher({
                 <li key={workspace.id}>
                   <a
                     className="flex items-center gap-3"
-                    onClick={() => onSwitchWorkspace(workspace.id)}
+                    onClick={() => {
+                      closeDropdown();
+                      onSwitchWorkspace(workspace.id);
+                    }}
                   >
                     {workspace.avatar ? (
                       <div className="w-8 h-8 rounded overflow-hidden shrink-0">
@@ -184,33 +198,16 @@ export function WorkspaceSwitcher({
           </>
         )}
 
-        {/* Go to Start option - when in a workspace and showStartEntry is true */}
-        {showStartEntry && !isStart && onGoToStart && (
-          <>
-            <div className="divider my-1"></div>
-            <li>
-              <a
-                className="flex items-center gap-3"
-                onClick={onGoToStart}
-              >
-                <div className="w-8 h-8 rounded bg-success/20 flex items-center justify-center shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                  </svg>
-                </div>
-                <span>Start</span>
-              </a>
-            </li>
-          </>
-        )}
-
         <div className="divider my-1"></div>
 
-        {/* New workspace */}
+        {/* New Space */}
         <li>
           <a
             className="flex items-center gap-3 text-primary"
-            onClick={onNewWorkspace}
+            onClick={() => {
+              closeDropdown();
+              onNewWorkspace();
+            }}
           >
             <div className="w-8 h-8 rounded bg-primary/10 flex items-center justify-center shrink-0">
               <svg
@@ -228,7 +225,7 @@ export function WorkspaceSwitcher({
                 />
               </svg>
             </div>
-            <span>Neuer Workspace</span>
+            <span>Neuer Space</span>
           </a>
         </li>
       </ul>

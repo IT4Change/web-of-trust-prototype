@@ -426,7 +426,7 @@ describe('WorkspaceSwitcher display logic', () => {
     isStart: boolean,
     currentWorkspace: WorkspaceInfo | null
   ): string {
-    return isStart ? 'Start' : (currentWorkspace?.name || 'Workspace');
+    return isStart ? 'Web of Trust' : (currentWorkspace?.name || 'Space');
   }
 
   /**
@@ -451,13 +451,13 @@ describe('WorkspaceSwitcher display logic', () => {
   }
 
   describe('getDisplayName', () => {
-    it('should return "Start" when isStart is true', () => {
-      expect(getDisplayName(true, null)).toBe('Start');
+    it('should return "Web of Trust" when isStart is true', () => {
+      expect(getDisplayName(true, null)).toBe('Web of Trust');
     });
 
-    it('should return "Start" even with workspace when isStart is true', () => {
+    it('should return "Web of Trust" even with workspace when isStart is true', () => {
       const workspace: WorkspaceInfo = { id: 'ws1', name: 'My Workspace', lastAccessed: 1000 };
-      expect(getDisplayName(true, workspace)).toBe('Start');
+      expect(getDisplayName(true, workspace)).toBe('Web of Trust');
     });
 
     it('should return workspace name when not in start state', () => {
@@ -465,8 +465,8 @@ describe('WorkspaceSwitcher display logic', () => {
       expect(getDisplayName(false, workspace)).toBe('My Workspace');
     });
 
-    it('should return "Workspace" when no workspace and not in start state', () => {
-      expect(getDisplayName(false, null)).toBe('Workspace');
+    it('should return "Space" when no workspace and not in start state', () => {
+      expect(getDisplayName(false, null)).toBe('Space');
     });
   });
 

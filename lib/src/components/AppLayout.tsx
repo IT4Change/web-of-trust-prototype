@@ -9,7 +9,7 @@
  * Apps only need to provide their content via children render prop.
  */
 
-import { useCallback, useState, useEffect, useMemo, type ReactNode } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { DocHandle } from '@automerge/automerge-repo';
 import { useRepo } from '@automerge/automerge-repo-react-hooks';
 import { useAppContext, type AppContextValue } from '../hooks/useAppContext';
@@ -32,6 +32,42 @@ import { DebugDashboard } from './DebugDashboard';
 import { exportIdentityToFile, importIdentityFromFile, loadSharedIdentity } from '../utils/storage';
 import type { WorkspaceLoadingState, ContentState } from './AppShell';
 import { KnownProfilesProvider } from '../providers/KnownProfilesProvider';
+
+/**
+ * Invisible corner trigger for debug dashboard
+ * Triple-tap (3 taps within 500ms) to toggle debug dashboard
+ */
+function DebugCornerTrigger({ onTripleTap }: { onTripleTap: () => void }) {
+  const tapCountRef = useRef(0);
+  const lastTapTimeRef = useRef(0);
+
+  const handleTap = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLastTap = now - lastTapTimeRef.current;
+
+    if (timeSinceLastTap < 500) {
+      tapCountRef.current += 1;
+    } else {
+      tapCountRef.current = 1;
+    }
+
+    lastTapTimeRef.current = now;
+
+    if (tapCountRef.current >= 3) {
+      tapCountRef.current = 0;
+      onTripleTap();
+    }
+  }, [onTripleTap]);
+
+  return (
+    <div
+      onClick={handleTap}
+      className="fixed bottom-0 left-0 w-12 h-12"
+      style={{ zIndex: 99999 }}
+      aria-hidden="true"
+    />
+  );
+}
 
 export interface AppLayoutProps<TDoc extends BaseDocument<unknown>> {
   /** The Automerge document */
@@ -639,6 +675,10 @@ function AppLayoutInner<TDoc extends BaseDocument<unknown>>({
         workspaceDocHandle={docHandle as DocHandle<BaseDocument<unknown>> | undefined}
         knownProfiles={ctx.knownProfiles}
       />
+
+      {/* Invisible Debug Trigger - triple-tap bottom-left corner to open debug dashboard */}
+      {/* Uses very high z-index to ensure it's always accessible, even over dialogs */}
+      <DebugCornerTrigger onTripleTap={handleToggleDebugDashboard} />
     </div>
   );
 }

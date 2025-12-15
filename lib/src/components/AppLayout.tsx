@@ -293,11 +293,18 @@ function AppLayoutInner<TDoc extends BaseDocument<unknown>>({
 
   // Get workspace info from UserDocument for loading state (before doc is loaded)
   const loadingWorkspaceInfo = useMemo(() => {
-    if (!isLoadingState || !workspaceLoading?.documentId || !userDoc?.workspaces) {
+    if (!isLoadingState || !workspaceLoading?.documentUrl || !userDoc?.workspaces) {
       return null;
     }
-    return userDoc.workspaces[workspaceLoading.documentId] || null;
-  }, [isLoadingState, workspaceLoading?.documentId, userDoc?.workspaces]);
+    // Try to find workspace by URL (documentUrl may be full automerge: URL)
+    const entries = Object.entries(userDoc.workspaces);
+    for (const [_, workspace] of entries) {
+      if (workspaceLoading.documentUrl.includes(workspace.docId || '')) {
+        return workspace;
+      }
+    }
+    return null;
+  }, [isLoadingState, workspaceLoading?.documentUrl, userDoc?.workspaces]);
 
   // Dynamic browser title and favicon based on workspace or start state
   const { titleToShow, faviconUrl } = useMemo(() => {
@@ -475,12 +482,10 @@ function AppLayoutInner<TDoc extends BaseDocument<unknown>>({
       case 'loading':
         return workspaceLoading ? (
           <WorkspaceLoadingContent
-            documentId={workspaceLoading.documentId}
-            attempt={workspaceLoading.attempt}
-            maxAttempts={workspaceLoading.maxAttempts}
-            elapsedTime={workspaceLoading.elapsedTime}
+            documentUrl={workspaceLoading.documentUrl}
+            secondsElapsed={workspaceLoading.secondsElapsed}
             onCreateNew={workspaceLoading.onCreateNew}
-            showCreateNewAfter={workspaceLoading.showCreateNewAfter}
+            showCreateNewAfterSeconds={workspaceLoading.showCreateNewAfterSeconds}
             onCancel={onCancelLoading}
           />
         ) : (

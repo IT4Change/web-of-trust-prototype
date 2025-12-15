@@ -36,34 +36,23 @@ import { initDebugTools, updateDebugState } from '../utils/debug';
 import { useCrossTabSync } from '../hooks/useCrossTabSync';
 import { isValidAutomergeUrl } from '@automerge/automerge-repo';
 import { DebugDashboard } from './DebugDashboard';
+import { OwnUserDocLoader } from './OwnUserDocLoader';
+import { WorkspaceDocLoader } from './WorkspaceDocLoader';
 
-/** Timeout for a single document loading attempt (ms) */
-const DOC_LOAD_TIMEOUT = 8000;
-
-/** Max retry attempts for document loading */
-const MAX_RETRY_ATTEMPTS = 10;
-
-/** Delay between retries (ms) - exponential backoff starting point */
-const RETRY_DELAY_BASE = 2000;
-
-/** Time after which to show "create new document" option (ms) */
-const SHOW_CREATE_NEW_AFTER = 20000;
+/** Time in seconds after which to show "create new document" option */
+const SHOW_CREATE_NEW_AFTER_SECONDS = 60;
 
 export interface WorkspaceLoadingState {
   /** Whether the workspace document is currently loading */
   isLoading: boolean;
-  /** Document ID being loaded (if any) */
-  documentId?: string;
-  /** Current retry attempt (1-based) */
-  attempt: number;
-  /** Maximum retry attempts */
-  maxAttempts: number;
-  /** Time elapsed since loading started (ms) */
-  elapsedTime: number;
+  /** Document URL being loaded (if any) */
+  documentUrl?: string;
+  /** Seconds elapsed since loading started */
+  secondsElapsed: number;
   /** Callback to create a new document instead */
   onCreateNew: () => void;
-  /** Time after which to show "create new" option (ms) */
-  showCreateNewAfter: number;
+  /** Seconds after which to show "create new" option */
+  showCreateNewAfterSeconds: number;
 }
 
 /**
@@ -177,11 +166,10 @@ export function AppShell<TDoc>({
 
   // Loading state
   const [isInitializing, setIsInitializing] = useState(true);
-  const [isLoadingDocument, setIsLoadingDocument] = useState(false);
-  const [loadingDocId, setLoadingDocId] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const loadStartTimeRef = useRef<number | null>(null);
+  // Workspace URL to load (triggers WorkspaceDocLoader when set)
+  const [workspaceUrlToLoad, setWorkspaceUrlToLoad] = useState<string | null>(null);
+  // Seconds counter for loading UI
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
 
   // Onboarding state (when no workspace exists)
   const [isOnboarding, setIsOnboarding] = useState(false);
@@ -189,6 +177,8 @@ export function AppShell<TDoc>({
   // User Document state (optional)
   const [userDocId, setUserDocId] = useState<string | undefined>(undefined);
   const [userDocHandle, setUserDocHandle] = useState<DocHandle<UserDocument> | undefined>(undefined);
+  // URL to load (triggers OwnUserDocLoader when set)
+  const [savedUserDocUrl, setSavedUserDocUrl] = useState<string | null>(null);
 
   // Debug Dashboard state
   const [showDebugDashboard, setShowDebugDashboard] = useState(false);
@@ -231,21 +221,19 @@ export function AppShell<TDoc>({
     };
   }, [userDocHandle]);
 
-  // Track elapsed time during document loading
+  // Seconds counter for workspace loading UI
   useEffect(() => {
-    if (!isLoadingDocument) {
-      setElapsedTime(0);
+    if (!workspaceUrlToLoad) {
+      setLoadingSeconds(0);
       return;
     }
 
     const interval = setInterval(() => {
-      if (loadStartTimeRef.current) {
-        setElapsedTime(Date.now() - loadStartTimeRef.current);
-      }
-    }, 100);
+      setLoadingSeconds(s => s + 1);
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [isLoadingDocument]);
+  }, [workspaceUrlToLoad]);
 
   // Listen to URL hash changes
   useEffect(() => {
@@ -263,155 +251,101 @@ export function AppShell<TDoc>({
   }, [documentId, storagePrefix]);
 
   /**
-   * Initialize or load the User Document
-   * This is a personal document that syncs across workspaces
+   * Create a new UserDocument for the given identity
    */
-  const initializeUserDocument = useCallback(async (identity: { did: string; displayName?: string }) => {
-    const savedUserDocId = loadUserDocId();
-
-    let handle: DocHandle<UserDocument>;
-
-    if (savedUserDocId) {
-      // Try to load existing user document with retries
-      // This is important for import scenarios where the document needs to sync from the network
-      const MAX_USER_DOC_RETRIES = 3;
-      let lastError: Error | null = null;
-
-      for (let attempt = 1; attempt <= MAX_USER_DOC_RETRIES; attempt++) {
-        try {
-          console.log(`[AppShell] Loading user document (attempt ${attempt}/${MAX_USER_DOC_RETRIES}): ${savedUserDocId.substring(0, 30)}...`);
-
-          // Add timeout for user document loading - longer timeout for retries
-          const timeout = DOC_LOAD_TIMEOUT * attempt;
-          const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => reject(new Error('User document load timeout')), timeout);
-          });
-
-          // In automerge-repo v2.x, find() returns a Promise that resolves when ready
-          handle = await Promise.race([
-            repo.find<UserDocument>(savedUserDocId as AutomergeUrl),
-            timeoutPromise,
-          ]);
-
-          // Verify the document belongs to this user
-          const doc = handle.doc();
-          if (!doc) {
-            console.warn('[AppShell] User document loaded but doc() returned null');
-            throw new Error('User document empty');
-          }
-
-          if (doc.did !== identity.did) {
-            console.warn('[AppShell] User document DID mismatch, creating new document');
-            // Create new document instead
-            handle = repo.create<UserDocument>();
-            handle.change((d) => {
-              const newDoc = createUserDocument(identity.did, identity.displayName || 'User');
-              Object.assign(d, newDoc);
-            });
-            saveUserDocId(handle.url);
-          } else {
-            console.log('[AppShell] User document loaded successfully');
-          }
-
-          // Success - exit retry loop
-          setUserDocId(handle.url);
-          setUserDocHandle(handle);
-          return;
-        } catch (e) {
-          lastError = e instanceof Error ? e : new Error(String(e));
-          console.warn(`[AppShell] Failed to load user document (attempt ${attempt}/${MAX_USER_DOC_RETRIES}):`, e);
-
-          if (attempt < MAX_USER_DOC_RETRIES) {
-            // Wait before retry with exponential backoff
-            const delay = RETRY_DELAY_BASE * attempt;
-            console.log(`[AppShell] Retrying user document load in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-        }
-      }
-
-      // All retries failed - create new document
-      console.warn('[AppShell] All retries failed for user document, creating new one:', lastError);
-      clearUserDocId();
-      handle = repo.create<UserDocument>();
-      handle.change((d) => {
-        const newDoc = createUserDocument(identity.did, identity.displayName || 'User');
-        Object.assign(d, newDoc);
-      });
-      saveUserDocId(handle.url);
-      console.log('[AppShell] New user document created:', handle.url.substring(0, 30));
-    } else {
-      // Create new user document
-      console.log('[AppShell] No saved user document, creating new one');
-      handle = repo.create<UserDocument>();
-      handle.change((d) => {
-        const newDoc = createUserDocument(identity.did, identity.displayName || 'User');
-        Object.assign(d, newDoc);
-      });
-      saveUserDocId(handle.url);
-      console.log('[AppShell] New user document created:', handle.url.substring(0, 30));
-    }
-
-    setUserDocId(handle.url);
+  const createNewUserDocument = useCallback((identity: { did: string; displayName?: string }) => {
+    console.log('[AppShell] Creating new user document');
+    const handle = repo.create<UserDocument>();
+    handle.change((d) => {
+      const newDoc = createUserDocument(identity.did, identity.displayName || 'User');
+      Object.assign(d, newDoc);
+    });
+    saveUserDocId(handle.url);
     setUserDocHandle(handle);
+    setUserDocId(handle.url);
+    setSavedUserDocUrl(null); // Clear loading URL
+    console.log('[AppShell] New user document created:', handle.url.substring(0, 30));
   }, [repo]);
 
   /**
-   * Try to load a document with automatic retries and exponential backoff
+   * Callback when OwnUserDocLoader successfully loads the UserDocument
    */
-  const loadDocumentWithRetry = useCallback(async (
-    docId: string,
-    attempt: number,
-    identity: UserIdentity
-  ): Promise<boolean> => {
-    const normalizedDocId = docId.startsWith('automerge:') ? docId : `automerge:${docId}`;
+  const handleUserDocLoaded = useCallback((handle: DocHandle<UserDocument>, doc: UserDocument) => {
+    console.log('[AppShell] User document loaded via OwnUserDocLoader');
+    setUserDocHandle(handle);
+    setUserDocId(handle.url);
+    setSavedUserDocUrl(null); // Clear loading URL
+  }, []);
+
+  /**
+   * Callback when UserDocument is unavailable (not found)
+   */
+  const handleUserDocUnavailable = useCallback(() => {
+    console.warn('[AppShell] User document unavailable, creating new one');
+    clearUserDocId();
+    const identity = storedIdentityRef.current;
+    if (identity) {
+      createNewUserDocument(identity);
+    }
+  }, [createNewUserDocument]);
+
+  /**
+   * Callback when UserDocument DID doesn't match expected
+   */
+  const handleUserDocDidMismatch = useCallback((actualDid: string) => {
+    console.warn('[AppShell] User document DID mismatch:', actualDid);
+    clearUserDocId();
+    setSavedUserDocUrl(null);
+    const identity = storedIdentityRef.current;
+    if (identity) {
+      createNewUserDocument(identity);
+    }
+  }, [createNewUserDocument]);
+
+  /**
+   * Callback when WorkspaceDocLoader successfully loads the workspace
+   */
+  const handleWorkspaceLoaded = useCallback((loadedDocumentId: DocumentId) => {
+    console.log('[AppShell] Workspace loaded via WorkspaceDocLoader');
+    setDocumentId(loadedDocumentId);
+    saveDocumentId(storagePrefix, loadedDocumentId);
+    setWorkspaceUrlToLoad(null); // Clear loading URL
+    setIsOnboarding(false);
+
+    // Update URL if not already there
+    const urlParams = new URLSearchParams(window.location.hash.substring(1));
+    if (!urlParams.get('doc')) {
+      window.location.hash = `doc=${loadedDocumentId}`;
+    }
+  }, [storagePrefix]);
+
+  /**
+   * Callback when workspace document is unavailable
+   */
+  const handleWorkspaceUnavailable = useCallback(() => {
+    console.warn('[AppShell] Workspace document unavailable');
+    // Keep loading state - user can choose to create new or keep waiting
+    // The UI will show the "create new" button after SHOW_CREATE_NEW_AFTER_SECONDS
+  }, []);
+
+  /**
+   * Start loading a workspace document
+   */
+  const startWorkspaceLoading = useCallback((docUrl: string) => {
+    const normalizedUrl = docUrl.startsWith('automerge:') ? docUrl : `automerge:${docUrl}`;
 
     // Validate AutomergeUrl format
-    if (!isValidAutomergeUrl(normalizedDocId)) {
-      console.error('[AppShell] Invalid document ID format:', docId);
+    if (!isValidAutomergeUrl(normalizedUrl)) {
+      console.error('[AppShell] Invalid document URL format:', docUrl);
       clearDocumentId(storagePrefix);
-      // Create new document instead
-      const handle = repo.create(createEmptyDocument(identity));
-      setDocumentId(handle.documentId);
-      saveDocumentId(storagePrefix, handle.documentId);
-      window.location.hash = `doc=${handle.documentId}`;
-      return true;
+      setIsOnboarding(true);
+      return;
     }
 
-    try {
-      console.log(`[AppShell] Loading document (attempt ${attempt + 1}/${MAX_RETRY_ATTEMPTS}): ${normalizedDocId.substring(0, 30)}...`);
-
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Document load timeout')), DOC_LOAD_TIMEOUT);
-      });
-
-      const handle = await Promise.race([
-        repo.find(normalizedDocId as AutomergeUrl),
-        timeoutPromise,
-      ]);
-
-      // Verify document was actually loaded
-      const doc = handle.doc();
-      if (!doc) {
-        throw new Error('Document not found or empty');
-      }
-
-      console.log(`[AppShell] Document loaded successfully`);
-      setDocumentId(handle.documentId);
-      saveDocumentId(storagePrefix, handle.documentId);
-
-      // Update URL if not already there
-      const urlParams = new URLSearchParams(window.location.hash.substring(1));
-      if (!urlParams.get('doc')) {
-        window.location.hash = `doc=${docId}`;
-      }
-
-      return true;
-    } catch (error) {
-      console.warn(`[AppShell] Attempt ${attempt + 1} failed:`, error);
-      return false;
-    }
-  }, [repo, storagePrefix, createEmptyDocument]);
+    console.log('[AppShell] Starting workspace loading:', normalizedUrl.substring(0, 30));
+    setWorkspaceUrlToLoad(normalizedUrl);
+    setIsOnboarding(false);
+  }, [storagePrefix]);
 
   /**
    * Main initialization function
@@ -457,48 +391,31 @@ export function AppShell<TDoc>({
 
     // Initialize User Document if enabled
     if (enableUserDocument) {
-      await initializeUserDocument(identity);
+      const existingUserDocUrl = loadUserDocId();
+      if (existingUserDocUrl) {
+        // Trigger OwnUserDocLoader by setting the URL
+        console.log('[AppShell] Found saved user document, loading via OwnUserDocLoader:', existingUserDocUrl.substring(0, 30));
+        setSavedUserDocUrl(existingUserDocUrl);
+      } else {
+        // No saved document - create new one immediately
+        createNewUserDocument(identity);
+      }
     }
 
     const docIdToUse = urlDocId || savedDocId;
 
+    // Done initializing - now either load workspace or show start screen
+    setIsInitializing(false);
+
     if (docIdToUse) {
-      // Start document loading with retries
-      setIsInitializing(false);
-      setIsLoadingDocument(true);
-      setLoadingDocId(docIdToUse);
-      loadStartTimeRef.current = Date.now();
-
-      // Try loading with automatic retries
-      for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
-        setRetryCount(attempt);
-
-        const success = await loadDocumentWithRetry(docIdToUse, attempt, identity);
-        if (success) {
-          setIsLoadingDocument(false);
-          setLoadingDocId(null);
-          return;
-        }
-
-        // Wait before next retry (exponential backoff)
-        if (attempt < MAX_RETRY_ATTEMPTS - 1) {
-          const delay = RETRY_DELAY_BASE * Math.pow(2, attempt);
-          console.log(`[AppShell] Waiting ${delay}ms before retry...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
-      }
-
-      // All retries failed - keep showing loading screen with create option
-      console.error('[AppShell] All retry attempts failed');
-      // Keep retryCount at last attempt (MAX_RETRY_ATTEMPTS - 1) so display shows correct number
-      setRetryCount(MAX_RETRY_ATTEMPTS - 1);
+      // Start loading workspace via WorkspaceDocLoader
+      startWorkspaceLoading(docIdToUse);
     } else {
       // No document to load - show start screen
       console.log('[AppShell] No workspace found, showing start screen');
       setIsOnboarding(true);
-      setIsInitializing(false);
     }
-  }, [repo, storagePrefix, createEmptyDocument, enableUserDocument, initializeUserDocument, loadDocumentWithRetry]);
+  }, [repo, storagePrefix, createEmptyDocument, enableUserDocument, createNewUserDocument, startWorkspaceLoading]);
 
   // Initialize on mount
   useEffect(() => {
@@ -545,8 +462,7 @@ export function AppShell<TDoc>({
 
     // Update state
     setDocumentId(docId);
-    setIsLoadingDocument(false);
-    setLoadingDocId(null);
+    setWorkspaceUrlToLoad(null); // Clear any loading state
     setIsOnboarding(false); // Exit onboarding/start state
 
     // Push new hash
@@ -557,6 +473,7 @@ export function AppShell<TDoc>({
 
   const handleCreateNewFromLoading = useCallback(() => {
     clearDocumentId(storagePrefix);
+    setWorkspaceUrlToLoad(null);
     window.location.hash = '';
     handleNewDocument();
   }, [storagePrefix, handleNewDocument]);
@@ -564,8 +481,7 @@ export function AppShell<TDoc>({
   // Handler to cancel loading and return to start state
   const handleCancelLoading = useCallback(() => {
     console.log('[AppShell] Canceling document loading, returning to start');
-    setIsLoadingDocument(false);
-    setLoadingDocId(null);
+    setWorkspaceUrlToLoad(null);
     clearDocumentId(storagePrefix);
     window.location.hash = '';
     setIsOnboarding(true);
@@ -580,51 +496,21 @@ export function AppShell<TDoc>({
     setIsOnboarding(true);
   }, [storagePrefix]);
 
-  // Shared document loading logic (used by switch + join) - no page reload
-  const loadWorkspaceDocument = useCallback(async (docId: string): Promise<boolean> => {
-    const identity = storedIdentityRef.current || loadSharedIdentity();
-    if (!identity) return false;
-
-    setIsLoadingDocument(true);
-    setLoadingDocId(docId);
-    setIsOnboarding(false);
-    loadStartTimeRef.current = Date.now();
-
-    for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
-      setRetryCount(attempt);
-
-      const success = await loadDocumentWithRetry(docId, attempt, identity);
-      if (success) {
-        setIsLoadingDocument(false);
-        setLoadingDocId(null);
-        // Update URL without reload
-        const url = new URL(window.location.href);
-        url.hash = `doc=${docId}`;
-        window.history.pushState(null, '', url.toString());
-        return true;
-      }
-
-      if (attempt < MAX_RETRY_ATTEMPTS - 1) {
-        const delay = RETRY_DELAY_BASE * Math.pow(2, attempt);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-
-    console.error('[AppShell] Failed to load workspace');
-    return false;
-  }, [loadDocumentWithRetry]);
-
   // Handle workspace switch (from WorkspaceSwitcher dropdown) - no page reload
   const handleSwitchWorkspace = useCallback((workspaceId: string) => {
     console.log('[AppShell] Switching to workspace:', workspaceId);
-    loadWorkspaceDocument(workspaceId);
-  }, [loadWorkspaceDocument]);
+    // Clear current document to trigger loading state
+    setDocumentId(null);
+    startWorkspaceLoading(workspaceId);
+  }, [startWorkspaceLoading]);
 
   // Handler when user wants to join a workspace - no page reload
   const handleJoinWorkspace = useCallback((docUrl: string) => {
     console.log('[AppShell] Joining workspace:', docUrl);
-    loadWorkspaceDocument(docUrl);
-  }, [loadWorkspaceDocument]);
+    // Clear current document to trigger loading state
+    setDocumentId(null);
+    startWorkspaceLoading(docUrl);
+  }, [startWorkspaceLoading]);
 
   // Handler for identity import - updates state without page reload
   const handleImportIdentity = useCallback(() => {
@@ -648,14 +534,23 @@ export function AppShell<TDoc>({
 
         // Re-initialize UserDocument with imported identity (loads from restored userDocUrl)
         if (enableUserDocument) {
-          initializeUserDocument(importedIdentity);
+          // Clear existing handle to trigger re-loading
+          setUserDocHandle(undefined);
+          setUserDocId(undefined);
+          const existingUserDocUrl = loadUserDocId();
+          if (existingUserDocUrl) {
+            // Trigger OwnUserDocLoader
+            setSavedUserDocUrl(existingUserDocUrl);
+          } else {
+            createNewUserDocument(importedIdentity);
+          }
         }
       },
       (error) => {
         console.error('[AppShell] Import failed:', error);
       }
     );
-  }, [storagePrefix, enableUserDocument, initializeUserDocument]);
+  }, [storagePrefix, enableUserDocument, createNewUserDocument]);
 
   // Show basic loading while initializing identity and user document
   // Once identity is ready, we render the shell even if workspace is still loading
@@ -664,26 +559,43 @@ export function AppShell<TDoc>({
   }
 
   // Determine content state based on current loading/onboarding status
+  const isLoadingWorkspace = workspaceUrlToLoad !== null && documentId === null;
   const contentState: ContentState =
     isOnboarding ? 'start' :
-    isLoadingDocument ? 'loading' :
+    isLoadingWorkspace ? 'loading' :
     'ready';
 
   // Build workspace loading state for children
-  const workspaceLoading: WorkspaceLoadingState | undefined = isLoadingDocument
+  const workspaceLoading: WorkspaceLoadingState | undefined = isLoadingWorkspace
     ? {
         isLoading: true,
-        documentId: loadingDocId || undefined,
-        attempt: retryCount + 1,
-        maxAttempts: MAX_RETRY_ATTEMPTS,
-        elapsedTime,
+        documentUrl: workspaceUrlToLoad || undefined,
+        secondsElapsed: loadingSeconds,
         onCreateNew: handleCreateNewFromLoading,
-        showCreateNewAfter: SHOW_CREATE_NEW_AFTER,
+        showCreateNewAfterSeconds: SHOW_CREATE_NEW_AFTER_SECONDS,
       }
     : undefined;
 
   return (
     <RepoContext.Provider value={repo}>
+      {/* OwnUserDocLoader - loads user document reactively when URL is set */}
+      {enableUserDocument && savedUserDocUrl && !userDocHandle && (
+        <OwnUserDocLoader
+          url={savedUserDocUrl}
+          expectedDid={currentUserDid}
+          onLoaded={handleUserDocLoaded}
+          onUnavailable={handleUserDocUnavailable}
+          onDidMismatch={handleUserDocDidMismatch}
+        />
+      )}
+      {/* WorkspaceDocLoader - loads workspace document reactively when URL is set */}
+      {workspaceUrlToLoad && !documentId && (
+        <WorkspaceDocLoader
+          url={workspaceUrlToLoad}
+          onLoaded={handleWorkspaceLoaded}
+          onUnavailable={handleWorkspaceUnavailable}
+        />
+      )}
       {children({
         documentId,
         currentUserDid,

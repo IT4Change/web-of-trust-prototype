@@ -274,18 +274,14 @@ export function DocumentLoadingScreen({
 }
 
 export interface WorkspaceLoadingContentProps {
-  /** Document ID being loaded (for display) */
-  documentId?: string;
-  /** Current retry attempt (1-based) */
-  attempt?: number;
-  /** Maximum retry attempts */
-  maxAttempts?: number;
-  /** Time elapsed since loading started (ms) */
-  elapsedTime?: number;
+  /** Document URL being loaded (for display) */
+  documentUrl?: string;
+  /** Seconds elapsed since loading started */
+  secondsElapsed?: number;
   /** Callback to create a new document */
   onCreateNew?: () => void;
-  /** Time after which to show "create new" option (ms) */
-  showCreateNewAfter?: number;
+  /** Seconds after which to show "create new" option */
+  showCreateNewAfterSeconds?: number;
   /** Callback to cancel loading and return to start */
   onCancel?: () => void;
 }
@@ -296,16 +292,13 @@ export interface WorkspaceLoadingContentProps {
  * but the workspace document is still being loaded/synced.
  */
 export function WorkspaceLoadingContent({
-  documentId,
-  attempt = 1,
-  maxAttempts = 10,
-  elapsedTime = 0,
+  documentUrl,
+  secondsElapsed = 0,
   onCreateNew,
-  showCreateNewAfter = 20000,
+  showCreateNewAfterSeconds = 60,
   onCancel,
 }: WorkspaceLoadingContentProps) {
   const [dots, setDots] = useState('');
-  const [showCreateNew, setShowCreateNew] = useState(false);
 
   // Animate dots
   useEffect(() => {
@@ -316,23 +309,15 @@ export function WorkspaceLoadingContent({
   }, []);
 
   // Show "create new" button after threshold
-  useEffect(() => {
-    if (elapsedTime >= showCreateNewAfter) {
-      setShowCreateNew(true);
-    }
-  }, [elapsedTime, showCreateNewAfter]);
+  const showCreateNew = secondsElapsed >= showCreateNewAfterSeconds;
 
-  // Calculate progress based on attempts
-  const progressPercent = Math.min((attempt / maxAttempts) * 100, 100);
-
-  // Friendly status messages
+  // Friendly status messages based on time
   const getStatusMessage = () => {
-    if (attempt === 1) return 'Verbinde mit Sync-Server';
-    if (attempt === 2) return 'Suche Workspace im Netzwerk';
-    if (attempt === 3) return 'Warte auf Synchronisation';
-    if (attempt <= 5) return 'Noch einen Moment Geduld';
-    if (attempt <= 8) return 'Verbindung wird aufgebaut';
-    return 'Letzter Versuch';
+    if (secondsElapsed < 5) return 'Verbinde mit Sync-Server';
+    if (secondsElapsed < 15) return 'Suche Workspace im Netzwerk';
+    if (secondsElapsed < 30) return 'Warte auf Synchronisation';
+    if (secondsElapsed < 45) return 'Noch einen Moment Geduld';
+    return 'Synchronisation läuft';
   };
 
   return (
@@ -377,23 +362,15 @@ export function WorkspaceLoadingContent({
             {getStatusMessage()}{dots}
           </p>
 
-          {/* Progress bar */}
-          <div className="w-full bg-base-300 rounded-full h-1.5 mb-3 overflow-hidden">
-            <div
-              className="h-full bg-primary rounded-full transition-all duration-1000 ease-out"
-              style={{ width: `${progressPercent}%` }}
-            ></div>
-          </div>
-
-          {/* Attempt info */}
-          <p className="text-xs text-base-content/40 mb-4">
-            Versuch {attempt} von {maxAttempts}
+          {/* Seconds counter */}
+          <p className="text-2xl font-mono text-base-content/60 mb-4">
+            {secondsElapsed}s
           </p>
 
-          {/* Document ID (very subtle, truncated) */}
-          {documentId && (
+          {/* Document URL (very subtle, truncated) */}
+          {documentUrl && (
             <p className="text-xs text-base-content/30 font-mono truncate mb-4 px-2">
-              {documentId.length > 50 ? `${documentId.substring(0, 50)}...` : documentId}
+              {documentUrl.length > 50 ? `${documentUrl.substring(0, 50)}...` : documentUrl}
             </p>
           )}
 
@@ -401,7 +378,7 @@ export function WorkspaceLoadingContent({
           {showCreateNew && onCreateNew && (
             <div className="pt-4 border-t border-base-300">
               <p className="text-sm text-base-content/60 mb-3">
-              Das Laden des Workspace-Dokuments dauert länger als erwartet...
+                Das Workspace-Dokument scheint nicht verfügbar zu sein.
               </p>
               <button
                 className="btn btn-primary btn-sm"

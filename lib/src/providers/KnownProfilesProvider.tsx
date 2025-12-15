@@ -26,7 +26,7 @@ import type {
   ProfileLoadState,
 } from './types';
 import { MAX_2ND_DEGREE_PROFILES, SOURCE_PRIORITY } from './types';
-import type { ProfileSource, ProfileSignatureStatus } from '../hooks/useKnownProfiles';
+import type { ProfileSource, ProfileSignatureStatus, DiscoverySource, KnownProfile } from '../hooks/useKnownProfiles';
 
 // Create context with null default
 export const KnownProfilesContext = createContext<KnownProfilesContextValue | null>(null);
@@ -132,7 +132,8 @@ export function KnownProfilesProvider({
         {
           displayName: userDoc.profile?.displayName,
           avatarUrl: userDoc.profile?.avatarUrl,
-          source: 'self',
+          discoverySource: 'self',
+          source: 'self', // @deprecated
           signatureStatus,
           lastUpdated: Date.now(),
           loadState: 'loaded',
@@ -161,7 +162,8 @@ export function KnownProfilesProvider({
         newFirstDegreeUrls.set(attestation.trusteeUserDocUrl, {
           url: attestation.trusteeUserDocUrl,
           expectedDid: trusteeDid,
-          source: 'trust-given',
+          discoverySource: 'trust',
+          source: 'trust-given', // @deprecated
           loadState: 'loading',
           registeredAt: Date.now(),
         });
@@ -176,7 +178,8 @@ export function KnownProfilesProvider({
         newFirstDegreeUrls.set(attestation.trusterUserDocUrl, {
           url: attestation.trusterUserDocUrl,
           expectedDid: trusterDid,
-          source: 'trust-received',
+          discoverySource: 'trust',
+          source: 'trust-received', // @deprecated
           loadState: 'loading',
           registeredAt: Date.now(),
         });
@@ -240,7 +243,8 @@ export function KnownProfilesProvider({
             did,
             displayName: identity.displayName,
             avatarUrl: identity.avatarUrl,
-            source: 'workspace',
+            discoverySource: 'workspace',
+            source: 'workspace', // @deprecated
             signatureStatus: 'missing',
             lastUpdated: Date.now(),
             loadState: 'loaded',
@@ -262,7 +266,8 @@ export function KnownProfilesProvider({
       updated.set(userDocUrl, {
         url: userDocUrl,
         expectedDid: expectedDid || null,
-        source: 'external',
+        discoverySource: 'external',
+        source: 'external', // @deprecated
         loadState: 'loading',
         registeredAt: Date.now(),
       });
@@ -275,14 +280,15 @@ export function KnownProfilesProvider({
       setProfiles((prev) => {
         const existing = prev.get(expectedDid);
         // Only create placeholder if no profile exists yet, or existing has no displayName
-        if (!existing || (!existing.displayName && existing.source === 'external')) {
+        if (!existing || (!existing.displayName && existing.discoverySource === 'external')) {
           const updated = new Map(prev);
           updated.set(expectedDid, {
             did: expectedDid,
             displayName,
             avatarUrl: undefined,
             userDocUrl,
-            source: 'external',
+            discoverySource: 'external',
+            source: 'external', // @deprecated
             signatureStatus: 'pending',
             lastUpdated: Date.now(),
             loadState: 'loading',
@@ -304,7 +310,8 @@ export function KnownProfilesProvider({
     ) => {
       // Get the entry to know the source
       const entry = docUrlRegistry.get(url);
-      const source = entry?.source || 'external';
+      const discoverySource = entry?.discoverySource || 'external';
+      const source = entry?.source || 'external'; // @deprecated
 
       // Update registry with load state
       setDocUrlRegistry((prev) => {
@@ -327,7 +334,8 @@ export function KnownProfilesProvider({
         displayName: profile.displayName,
         avatarUrl: profile.avatarUrl,
         userDocUrl: url,
-        source,
+        discoverySource,
+        source, // @deprecated
         signatureStatus,
         lastUpdated: Date.now(),
         loadState: 'loaded',
@@ -335,7 +343,7 @@ export function KnownProfilesProvider({
       });
 
       // For 1st-degree profiles, crawl 2nd-degree
-      if (source === 'trust-given' || source === 'trust-received') {
+      if (discoverySource === 'trust') {
         // We need to get the full doc to extract trust URLs
         // The UserDocLoader only gives us profile data, so we rely on the doc being in the repo
         // For now, we'll skip 2nd-degree crawling here and handle it separately

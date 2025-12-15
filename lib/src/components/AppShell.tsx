@@ -35,7 +35,6 @@ import { LoadingScreen } from './LoadingScreen';
 import { initDebugTools, updateDebugState } from '../utils/debug';
 import { useCrossTabSync } from '../hooks/useCrossTabSync';
 import { isValidAutomergeUrl } from '@automerge/automerge-repo';
-import { DebugDashboard } from './DebugDashboard';
 import { OwnUserDocLoader } from './OwnUserDocLoader';
 import { WorkspaceDocLoader } from './WorkspaceDocLoader';
 
@@ -179,9 +178,6 @@ export function AppShell<TDoc>({
   const [userDocHandle, setUserDocHandle] = useState<DocHandle<UserDocument> | undefined>(undefined);
   // URL to load (triggers OwnUserDocLoader when set)
   const [savedUserDocUrl, setSavedUserDocUrl] = useState<string | null>(null);
-
-  // Debug Dashboard state
-  const [showDebugDashboard, setShowDebugDashboard] = useState(false);
 
   // Stored identity for document creation
   const storedIdentityRef = useRef<UserIdentity | null>(null);
@@ -655,7 +651,7 @@ export function AppShell<TDoc>({
         displayName,
         onResetIdentity: handleResetIdentity,
         onNewDocument: handleNewDocument,
-        onToggleDebugDashboard: () => setShowDebugDashboard(prev => !prev),
+        onToggleDebugDashboard: () => {}, // Debug Dashboard is managed by AppLayout
         // Content state: determines what content area should show
         contentState,
         // Callbacks for content state transitions
@@ -672,11 +668,6 @@ export function AppShell<TDoc>({
           userDocHandle,
         }),
       })}
-      {/* Debug Dashboard - controlled via navbar menu */}
-      <DebugDashboard
-        isOpen={showDebugDashboard}
-        onClose={() => setShowDebugDashboard(false)}
-      />
     </RepoContext.Provider>
   );
 }

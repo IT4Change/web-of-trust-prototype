@@ -19,6 +19,7 @@ import type { BaseDocument } from '../schema/document';
 import { formatRelativeTime } from '../utils/time';
 import { useDocumentChanges, type ChangeEntry } from '../hooks/useDocumentChanges';
 import { TrustGraph } from './TrustGraph';
+import type { KnownProfile, ProfileSource } from '../hooks/useKnownProfiles';
 
 interface DocumentInfo {
   url: string;
@@ -26,6 +27,7 @@ interface DocumentInfo {
   label: string;
   doc: unknown;
   handle?: DocHandle<unknown>;
+  source?: ProfileSource;
 }
 
 interface DebugDashboardProps {
@@ -35,6 +37,12 @@ interface DebugDashboardProps {
   isOpen: boolean;
   /** Callback when dashboard should close */
   onClose: () => void;
+  /** User document handle for reactive updates */
+  userDocHandle?: DocHandle<UserDocument> | null;
+  /** Workspace document handle for reactive updates */
+  workspaceDocHandle?: DocHandle<BaseDocument<unknown>> | null;
+  /** All known profiles from the trust network */
+  knownProfiles?: Map<string, KnownProfile>;
 }
 
 
@@ -158,6 +166,9 @@ export function DebugDashboard({
   className = '',
   isOpen,
   onClose,
+  userDocHandle,
+  workspaceDocHandle,
+  knownProfiles,
 }: DebugDashboardProps) {
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
@@ -223,98 +234,113 @@ export function DebugDashboard({
         return;
       }
 
-      // Load user document
-      const userDocUrl = window.__userDocUrl;
-      if (userDocUrl) {
-        try {
-          const handle = await repo.find<UserDocument>(userDocUrl as AutomergeUrl);
-          const doc = handle.doc();
-          if (doc) {
-            docs.push({
-              url: userDocUrl,
-              type: 'userDoc',
-              label: `User: ${doc.profile?.displayName || doc.did?.substring(0, 20) + '...'}`,
-              doc,
-              handle: handle as DocHandle<unknown>,
-            });
-            subscribeToDoc(handle as DocHandle<unknown>, userDocUrl);
-          }
-        } catch (err) {
-          console.warn('Failed to load user doc:', err);
+      // Load user document - prefer prop-based handle for freshest data
+      if (userDocHandle) {
+        const doc = userDocHandle.doc();
+        if (doc) {
+          docs.push({
+            url: userDocHandle.url,
+            type: 'userDoc',
+            label: `User: ${doc.profile?.displayName || doc.did?.substring(0, 20) + '...'}`,
+            doc,
+            handle: userDocHandle as DocHandle<unknown>,
+            source: 'self',
+          });
+          subscribeToDoc(userDocHandle as DocHandle<unknown>, userDocHandle.url);
         }
-      }
-
-      // Load workspace document
-      const workspaceDocUrl = window.__docUrl;
-      if (workspaceDocUrl) {
-        try {
-          const handle = await repo.find<BaseDocument<unknown>>(workspaceDocUrl as AutomergeUrl);
-          const doc = handle.doc();
-          if (doc) {
-            docs.push({
-              url: workspaceDocUrl,
-              type: 'workspaceDoc',
-              label: `Workspace: ${doc.context?.name || 'Unnamed'}`,
-              doc,
-              handle: handle as DocHandle<unknown>,
-            });
-            subscribeToDoc(handle as DocHandle<unknown>, workspaceDocUrl);
-          }
-        } catch (err) {
-          console.warn('Failed to load workspace doc:', err);
-        }
-      }
-
-      // Load external user documents (from trust relationships)
-      const userDoc = window.__userDoc;
-      const loadedExternalUrls = new Set<string>(); // Avoid duplicates
-
-      // From trustReceived: people who trust us (have their trusterUserDocUrl)
-      if (userDoc?.trustReceived) {
-        for (const [trusterDid, attestation] of Object.entries(userDoc.trustReceived)) {
-          if (attestation.trusterUserDocUrl && !loadedExternalUrls.has(attestation.trusterUserDocUrl)) {
-            loadedExternalUrls.add(attestation.trusterUserDocUrl);
-            try {
-              const handle = await repo.find<UserDocument>(attestation.trusterUserDocUrl as AutomergeUrl);
-              const doc = handle.doc();
-              if (doc) {
-                docs.push({
-                  url: attestation.trusterUserDocUrl,
-                  type: 'externalUserDoc',
-                  label: `Received: ${doc.profile?.displayName || trusterDid.substring(0, 20) + '...'}`,
-                  doc,
-                  handle: handle as DocHandle<unknown>,
-                });
-                subscribeToDoc(handle as DocHandle<unknown>, attestation.trusterUserDocUrl);
-              }
-            } catch (err) {
-              console.warn('Failed to load external doc from trustReceived:', err);
+      } else {
+        // Fallback to window global
+        const userDocUrl = window.__userDocUrl;
+        if (userDocUrl) {
+          try {
+            const handle = await repo.find<UserDocument>(userDocUrl as AutomergeUrl);
+            const doc = handle.doc();
+            if (doc) {
+              docs.push({
+                url: userDocUrl,
+                type: 'userDoc',
+                label: `User: ${doc.profile?.displayName || doc.did?.substring(0, 20) + '...'}`,
+                doc,
+                handle: handle as DocHandle<unknown>,
+                source: 'self',
+              });
+              subscribeToDoc(handle as DocHandle<unknown>, userDocUrl);
             }
+          } catch (err) {
+            console.warn('Failed to load user doc:', err);
           }
         }
       }
 
-      // From trustGiven: people we trust (have their trusteeUserDocUrl from QR scan)
-      if (userDoc?.trustGiven) {
-        for (const [trusteeDid, attestation] of Object.entries(userDoc.trustGiven)) {
-          if (attestation.trusteeUserDocUrl && !loadedExternalUrls.has(attestation.trusteeUserDocUrl)) {
-            loadedExternalUrls.add(attestation.trusteeUserDocUrl);
-            try {
-              const handle = await repo.find<UserDocument>(attestation.trusteeUserDocUrl as AutomergeUrl);
-              const doc = handle.doc();
-              if (doc) {
-                docs.push({
-                  url: attestation.trusteeUserDocUrl,
-                  type: 'externalUserDoc',
-                  label: `Scanned: ${doc.profile?.displayName || trusteeDid.substring(0, 20) + '...'}`,
-                  doc,
-                  handle: handle as DocHandle<unknown>,
-                });
-                subscribeToDoc(handle as DocHandle<unknown>, attestation.trusteeUserDocUrl);
-              }
-            } catch (err) {
-              console.warn('Failed to load external doc from trustGiven:', err);
+      // Load workspace document - prefer prop-based handle for freshest data
+      if (workspaceDocHandle) {
+        const doc = workspaceDocHandle.doc();
+        if (doc) {
+          docs.push({
+            url: workspaceDocHandle.url,
+            type: 'workspaceDoc',
+            label: `Workspace: ${doc.context?.name || 'Unnamed'}`,
+            doc,
+            handle: workspaceDocHandle as DocHandle<unknown>,
+            source: 'workspace',
+          });
+          subscribeToDoc(workspaceDocHandle as DocHandle<unknown>, workspaceDocHandle.url);
+        }
+      } else {
+        // Fallback to window global
+        const workspaceDocUrl = window.__docUrl;
+        if (workspaceDocUrl) {
+          try {
+            const handle = await repo.find<BaseDocument<unknown>>(workspaceDocUrl as AutomergeUrl);
+            const doc = handle.doc();
+            if (doc) {
+              docs.push({
+                url: workspaceDocUrl,
+                type: 'workspaceDoc',
+                label: `Workspace: ${doc.context?.name || 'Unnamed'}`,
+                doc,
+                handle: handle as DocHandle<unknown>,
+                source: 'workspace',
+              });
+              subscribeToDoc(handle as DocHandle<unknown>, workspaceDocUrl);
             }
+          } catch (err) {
+            console.warn('Failed to load workspace doc:', err);
+          }
+        }
+      }
+
+      // Load external user documents from knownProfiles (already loaded by KnownProfilesProvider)
+      // Skip own profile (already loaded as userDoc)
+      const ownDid = userDocHandle?.doc()?.did;
+      const loadedExternalUrls = new Set<string>();
+
+      if (knownProfiles) {
+        for (const [did, profile] of knownProfiles.entries()) {
+          // Skip own profile
+          if (did === ownDid) continue;
+          // Skip profiles without userDocUrl
+          if (!profile.userDocUrl) continue;
+          // Skip duplicates
+          if (loadedExternalUrls.has(profile.userDocUrl)) continue;
+
+          loadedExternalUrls.add(profile.userDocUrl);
+          try {
+            const handle = await repo.find<UserDocument>(profile.userDocUrl as AutomergeUrl);
+            const doc = handle.doc();
+            if (doc) {
+              docs.push({
+                url: profile.userDocUrl,
+                type: 'externalUserDoc',
+                label: `${profile.displayName || did.substring(0, 20) + '...'}`,
+                doc,
+                handle: handle as DocHandle<unknown>,
+                source: profile.source,
+              });
+              subscribeToDoc(handle as DocHandle<unknown>, profile.userDocUrl);
+            }
+          } catch (err) {
+            console.warn(`Failed to load external doc for ${profile.displayName || did}:`, err);
           }
         }
       }
@@ -329,7 +355,7 @@ export function DebugDashboard({
     }
 
     setIsLoading(false);
-  }, [selectedDoc, subscribeToDoc]);
+  }, [selectedDoc, subscribeToDoc, userDocHandle, workspaceDocHandle, knownProfiles]);
 
   // Initial load and cleanup
   useEffect(() => {
@@ -350,7 +376,7 @@ export function DebugDashboard({
   const [dataViewTab, setDataViewTab] = useState<'tree' | 'raw'>('tree');
 
   // Dashboard main view tabs
-  const [mainViewTab, setMainViewTab] = useState<'documents' | 'trustGraph'>('documents');
+  const [mainViewTab, setMainViewTab] = useState<'documents' | 'trustGraph' | 'profiles'>('documents');
 
   // Extract user document and external documents for trust graph
   const { userDoc, externalDocs } = useMemo(() => {
@@ -381,7 +407,7 @@ export function DebugDashboard({
   }
 
   return (
-    <div className={`fixed inset-0 bg-black/80 z-[1200] overflow-auto ${className}`}>
+    <div className={`fixed inset-0 bg-black/80 z-50000 overflow-auto ${className}`}>
       <div className="min-h-screen p-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-4 bg-base-200 p-4 rounded-lg sticky top-0 z-10">
@@ -437,6 +463,12 @@ export function DebugDashboard({
           >
             Trust-Graph
           </button>
+          <button
+            className={`tab tab-lg ${mainViewTab === 'profiles' ? 'tab-active' : ''}`}
+            onClick={() => setMainViewTab('profiles')}
+          >
+            Profile ({knownProfiles?.size || 0})
+          </button>
         </div>
 
         {/* Trust Graph View */}
@@ -462,6 +494,112 @@ export function DebugDashboard({
           </div>
         )}
 
+        {/* Profiles View */}
+        {mainViewTab === 'profiles' && (
+          <div className="bg-base-200 rounded-lg p-4">
+            <h2 className="text-lg font-semibold mb-4">Bekannte Profile ({knownProfiles?.size || 0})</h2>
+            {knownProfiles && knownProfiles.size > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="table table-sm w-full">
+                  <thead>
+                    <tr>
+                      <th>Avatar</th>
+                      <th>Name</th>
+                      <th>DID</th>
+                      <th>Trust-Status</th>
+                      <th>Entdeckung</th>
+                      <th>Signatur</th>
+                      <th>Aktualisiert</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from(knownProfiles.entries()).map(([did, profile]) => (
+                      <tr key={did} className="hover">
+                        <td>
+                          {profile.avatarUrl ? (
+                            <div className="avatar">
+                              <div className="w-8 h-8 rounded-full">
+                                <img src={profile.avatarUrl} alt="" />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="avatar placeholder">
+                              <div className="bg-neutral text-neutral-content rounded-full w-8 h-8">
+                                <span className="text-xs">
+                                  {(profile.displayName || did).charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="font-medium">
+                          {profile.displayName || <span className="text-gray-500 italic">Unbekannt</span>}
+                        </td>
+                        <td className="font-mono text-xs">
+                          <span title={did}>{did.substring(0, 25)}...</span>
+                        </td>
+                        <td>
+                          {/* Trust flags - computed from userDoc */}
+                          <div className="flex flex-wrap gap-1">
+                            {profile.discoverySource === 'self' ? (
+                              <span className="badge badge-sm badge-primary">Ich</span>
+                            ) : (
+                              <>
+                                {profile.isMutualTrust && (
+                                  <span className="badge badge-sm badge-success" title="Gegenseitiges Vertrauen">Gegenseitig</span>
+                                )}
+                                {!profile.isMutualTrust && profile.isTrustGiven && (
+                                  <span className="badge badge-sm badge-info" title="Ich vertraue dieser Person">Ich vertraue</span>
+                                )}
+                                {!profile.isMutualTrust && profile.isTrustReceived && (
+                                  <span className="badge badge-sm badge-accent" title="Diese Person vertraut mir">Vertraut mir</span>
+                                )}
+                                {!profile.isTrustGiven && !profile.isTrustReceived && (
+                                  <span className="badge badge-sm badge-ghost">Kein Trust</span>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          {/* Discovery source - how we found this profile */}
+                          <span className={`badge badge-sm ${
+                            profile.discoverySource === 'self' ? 'badge-primary' :
+                            profile.discoverySource === 'trust' ? 'badge-info' :
+                            profile.discoverySource === 'external' ? 'badge-warning' :
+                            profile.discoverySource === 'workspace' ? 'badge-accent' :
+                            'badge-ghost'
+                          }`}>
+                            {profile.discoverySource}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`badge badge-sm ${
+                            profile.signatureStatus === 'valid' ? 'badge-success' :
+                            profile.signatureStatus === 'invalid' ? 'badge-error' :
+                            profile.signatureStatus === 'missing' ? 'badge-warning' :
+                            profile.signatureStatus === 'pending' ? 'badge-ghost' :
+                            'badge-ghost'
+                          }`}>
+                            {profile.signatureStatus}
+                          </span>
+                        </td>
+                        <td className="text-xs text-gray-500">
+                          {formatRelativeTime(profile.lastUpdated)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                Keine Profile geladen. Profile werden durch das Trust-Netzwerk und den Workspace geladen.
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Documents View */}
         {mainViewTab === 'documents' && (
         <div className="grid grid-cols-12 gap-4">
@@ -480,8 +618,42 @@ export function DebugDashboard({
                   }`}
                 >
                   <div className="font-medium truncate">{doc.label}</div>
-                  <div className="text-xs opacity-70 mt-1">
-                    {doc.type}
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <span className="text-xs opacity-70">{doc.type}</span>
+                    {/* Show trust status from knownProfiles if available */}
+                    {(() => {
+                      const docData = doc.doc as UserDocument;
+                      const profile = docData?.did ? knownProfiles?.get(docData.did) : null;
+                      if (profile) {
+                        return (
+                          <>
+                            {profile.discoverySource === 'self' ? (
+                              <span className="badge badge-xs badge-primary">Ich</span>
+                            ) : (
+                              <>
+                                {profile.isMutualTrust && (
+                                  <span className="badge badge-xs badge-success">Gegenseitig</span>
+                                )}
+                                {!profile.isMutualTrust && profile.isTrustGiven && (
+                                  <span className="badge badge-xs badge-info">Ich vertraue</span>
+                                )}
+                                {!profile.isMutualTrust && profile.isTrustReceived && (
+                                  <span className="badge badge-xs badge-accent">Vertraut mir</span>
+                                )}
+                                {!profile.isTrustGiven && !profile.isTrustReceived && (
+                                  <span className="badge badge-xs badge-ghost">Kein Trust</span>
+                                )}
+                              </>
+                            )}
+                          </>
+                        );
+                      }
+                      // Fallback for workspace docs
+                      if (doc.type === 'workspaceDoc') {
+                        return <span className="badge badge-xs badge-accent">Workspace</span>;
+                      }
+                      return null;
+                    })()}
                   </div>
                 </button>
               ))}

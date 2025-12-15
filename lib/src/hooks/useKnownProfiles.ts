@@ -32,7 +32,17 @@ import type { TrackedProfile } from '../providers/types';
 /** Profile signature verification status */
 export type ProfileSignatureStatus = 'valid' | 'invalid' | 'missing' | 'pending';
 
-/** Source of profile data - indicates trust distance */
+/** How we discovered this profile (immutable after discovery) */
+export type DiscoverySource =
+  | 'self'        // Own profile
+  | 'trust'       // From trust network (1st or 2nd degree)
+  | 'external'    // QR scan, manual entry
+  | 'workspace';  // Workspace member
+
+/**
+ * @deprecated Use DiscoverySource instead. Kept for backwards compatibility.
+ * This type conflated "how we found the profile" with "what is the trust relationship"
+ */
 export type ProfileSource =
   | 'self' // Own profile
   | 'trust-given' // User I trust (1st degree)
@@ -41,13 +51,23 @@ export type ProfileSource =
   | 'external' // Registered externally (e.g., QR scan before trust)
   | 'workspace'; // Workspace identity (fallback)
 
-/** Known profile with metadata */
+/** Known profile with computed trust flags */
 export interface KnownProfile {
   did: string;
   displayName?: string;
   avatarUrl?: string;
   userDocUrl?: string;
+  /** How we discovered this profile */
+  discoverySource: DiscoverySource;
+  /** @deprecated Use isTrustGiven/isTrustReceived instead */
   source: ProfileSource;
+  // Trust flags - computed from userDoc, not stored
+  /** I trust this person (exists in userDoc.trustGiven) */
+  isTrustGiven: boolean;
+  /** This person trusts me (exists in userDoc.trustReceived) */
+  isTrustReceived: boolean;
+  /** Both directions - mutual trust */
+  isMutualTrust: boolean;
   signatureStatus: ProfileSignatureStatus;
   lastUpdated: number;
 }
@@ -77,16 +97,26 @@ export interface UseKnownProfilesResult {
 }
 
 // ============================================================================
-// Helper: Convert TrackedProfile to KnownProfile
+// Helper: Convert TrackedProfile to KnownProfile with computed trust flags
 // ============================================================================
 
-function trackedToKnown(tracked: TrackedProfile): KnownProfile {
+function trackedToKnown(
+  tracked: TrackedProfile,
+  userDoc: UserDocument | null
+): KnownProfile {
+  const isTrustGiven = Boolean(userDoc?.trustGiven?.[tracked.did]);
+  const isTrustReceived = Boolean(userDoc?.trustReceived?.[tracked.did]);
+
   return {
     did: tracked.did,
     displayName: tracked.displayName,
     avatarUrl: tracked.avatarUrl,
     userDocUrl: tracked.userDocUrl,
-    source: tracked.source,
+    discoverySource: tracked.discoverySource,
+    source: tracked.source, // @deprecated
+    isTrustGiven,
+    isTrustReceived,
+    isMutualTrust: isTrustGiven && isTrustReceived,
     signatureStatus: tracked.signatureStatus,
     lastUpdated: tracked.lastUpdated,
   };
@@ -100,35 +130,36 @@ function trackedToKnown(tracked: TrackedProfile): KnownProfile {
  * Hook that provides known profiles from the KnownProfilesProvider context.
  *
  * NOTE: This hook requires KnownProfilesProvider to be present in the component tree.
- * The options parameter is kept for backwards compatibility but is ignored when
- * using the provider (the provider has its own props for configuration).
+ * The options.userDoc is used to compute trust flags (isTrustGiven, isTrustReceived).
  *
- * @param _options - Configuration options (ignored when provider is present)
+ * @param options - Configuration options (userDoc is used for trust flag computation)
  * @returns Object with profiles, getProfile, isLoading, and registerExternalDoc
  */
-export function useKnownProfiles(_options: UseKnownProfilesOptions): UseKnownProfilesResult {
+export function useKnownProfiles(options: UseKnownProfilesOptions): UseKnownProfilesResult {
   const context = useKnownProfilesContextOptional();
+  const { userDoc } = options;
 
-  // Convert TrackedProfile to KnownProfile for backwards compatibility
+  // Convert TrackedProfile to KnownProfile with computed trust flags
+  // Trust flags are computed from userDoc.trustGiven and userDoc.trustReceived
   const profiles = useMemo(() => {
     if (!context) return new Map<string, KnownProfile>();
 
     const result = new Map<string, KnownProfile>();
     for (const [did, tracked] of context.profiles) {
-      result.set(did, trackedToKnown(tracked));
+      result.set(did, trackedToKnown(tracked, userDoc));
     }
     return result;
-  }, [context?.profiles]);
+  }, [context?.profiles, userDoc?.trustGiven, userDoc?.trustReceived]);
 
-  // Wrap getProfile to return KnownProfile instead of TrackedProfile
+  // Wrap getProfile to return KnownProfile with computed trust flags
   const getProfile = useMemo(() => {
     if (!context) return () => undefined;
 
     return (did: string): KnownProfile | undefined => {
       const tracked = context.getProfile(did);
-      return tracked ? trackedToKnown(tracked) : undefined;
+      return tracked ? trackedToKnown(tracked, userDoc) : undefined;
     };
-  }, [context?.getProfile]);
+  }, [context?.getProfile, userDoc?.trustGiven, userDoc?.trustReceived]);
 
   // Return default values if context is not available
   if (!context) {

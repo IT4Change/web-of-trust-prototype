@@ -2,17 +2,20 @@
  * Type definitions for KnownProfilesProvider
  */
 
-import type { ProfileSource, ProfileSignatureStatus } from '../hooks/useKnownProfiles';
+import type { ProfileSource, ProfileSignatureStatus, DiscoverySource } from '../hooks/useKnownProfiles';
 
 /** Loading state for each profile */
 export type ProfileLoadState = 'loading' | 'loaded' | 'unavailable';
 
-/** Extended profile with load state tracking */
+/** Extended profile with load state tracking (internal use) */
 export interface TrackedProfile {
   did: string;
   displayName?: string;
   avatarUrl?: string;
   userDocUrl?: string;
+  /** How we discovered this profile (immutable) */
+  discoverySource: DiscoverySource;
+  /** @deprecated Kept for backwards compatibility during transition */
   source: ProfileSource;
   signatureStatus: ProfileSignatureStatus;
   lastUpdated: number;
@@ -25,6 +28,9 @@ export interface TrackedProfile {
 export interface DocUrlEntry {
   url: string;
   expectedDid: string | null;
+  /** How we discovered this URL */
+  discoverySource: DiscoverySource;
+  /** @deprecated Kept for backwards compatibility */
   source: ProfileSource;
   loadState: ProfileLoadState;
   /** Timestamp when registered (for FIFO eviction) */

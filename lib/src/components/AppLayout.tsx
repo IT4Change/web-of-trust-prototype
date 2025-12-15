@@ -28,6 +28,7 @@ import { Toast } from './Toast';
 import { Confetti } from './Confetti';
 import { WorkspaceLoadingContent } from './LoadingScreen';
 import { StartContent } from './StartContent';
+import { DebugDashboard } from './DebugDashboard';
 import { exportIdentityToFile, importIdentityFromFile, loadSharedIdentity } from '../utils/storage';
 import type { WorkspaceLoadingState, ContentState } from './AppShell';
 import { KnownProfilesProvider } from '../providers/KnownProfilesProvider';
@@ -263,6 +264,22 @@ function AppLayoutInner<TDoc extends BaseDocument<unknown>>({
   // QR Scanner state for verification
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
+  // Debug Dashboard state (managed here for access to knownProfiles context)
+  const [showDebugDashboard, setShowDebugDashboard] = useState(false);
+
+  // Keyboard shortcut for Debug Dashboard (Ctrl+.)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === '.') {
+        e.preventDefault();
+        setShowDebugDashboard(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Join workspace confirmation state
   // null = no pending join, 'pending' = waiting for user confirmation, 'joined' = user has joined
   const [joinState, setJoinState] = useState<'pending' | 'joined' | null>(null);
@@ -462,6 +479,12 @@ function AppLayoutInner<TDoc extends BaseDocument<unknown>>({
     onGoToStart?.();
   }, [userDocHandle, documentId, onGoToStart]);
 
+  // Toggle debug dashboard - use local state, also call prop callback if provided
+  const handleToggleDebugDashboard = useCallback(() => {
+    setShowDebugDashboard(prev => !prev);
+    onToggleDebugDashboard?.();
+  }, [onToggleDebugDashboard]);
+
   // Render content based on contentState
   const renderContent = () => {
     switch (contentState) {
@@ -519,7 +542,7 @@ function AppLayoutInner<TDoc extends BaseDocument<unknown>>({
       {ctx.navbarProps && (
         <AppNavbar
           {...ctx.navbarProps}
-          onToggleDebugDashboard={onToggleDebugDashboard}
+          onToggleDebugDashboard={handleToggleDebugDashboard}
           isStart={isStart}
           onGoToStart={onGoToStart}
           onLeaveWorkspace={handleLeaveWorkspace}
@@ -607,6 +630,15 @@ function AppLayoutInner<TDoc extends BaseDocument<unknown>>({
           onDecline={handleDeclineJoin}
         />
       )}
+
+      {/* Debug Dashboard - rendered here to have access to knownProfiles context */}
+      <DebugDashboard
+        isOpen={showDebugDashboard}
+        onClose={() => setShowDebugDashboard(false)}
+        userDocHandle={userDocHandle}
+        workspaceDocHandle={docHandle as DocHandle<BaseDocument<unknown>> | undefined}
+        knownProfiles={ctx.knownProfiles}
+      />
     </div>
   );
 }

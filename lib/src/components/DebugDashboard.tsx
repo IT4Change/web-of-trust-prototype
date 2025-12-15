@@ -506,6 +506,7 @@ export function DebugDashboard({
                       <th>Avatar</th>
                       <th>Name</th>
                       <th>DID</th>
+                      <th>Laden</th>
                       <th>Trust-Status</th>
                       <th>Entdeckung</th>
                       <th>Signatur</th>
@@ -537,6 +538,20 @@ export function DebugDashboard({
                         </td>
                         <td className="font-mono text-xs">
                           <span title={did}>{did.substring(0, 25)}...</span>
+                        </td>
+                        <td>
+                          {/* Load state - shows if UserDoc was loaded successfully */}
+                          <span className={`badge badge-sm ${
+                            profile.loadState === 'loaded' ? 'badge-success' :
+                            profile.loadState === 'loading' ? 'badge-warning' :
+                            profile.loadState === 'unavailable' ? 'badge-error' :
+                            'badge-ghost'
+                          }`}>
+                            {profile.loadState === 'loading' && (
+                              <span className="loading loading-spinner loading-xs mr-1"></span>
+                            )}
+                            {profile.loadState}
+                          </span>
                         </td>
                         <td>
                           {/* Trust flags - computed from userDoc */}

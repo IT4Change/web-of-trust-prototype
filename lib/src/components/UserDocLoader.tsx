@@ -11,6 +11,12 @@ import type { AutomergeUrl } from '@automerge/automerge-repo';
 import type { UserDocument } from '../schema/userDocument';
 import type { UserDocLoaderProps } from '../providers/types';
 
+// Debug logging helper
+const DEBUG = true;
+const log = (msg: string, ...args: unknown[]) => {
+  if (DEBUG) console.log(`[UserDocLoader] ${msg}`, ...args);
+};
+
 /**
  * Invisible component that loads a UserDocument and reports its state.
  *
@@ -27,20 +33,44 @@ export function UserDocLoader({
   // Track if we've already reported unavailable (to avoid duplicate calls)
   const reportedUnavailableRef = useRef(false);
   const lastReportedProfileRef = useRef<string | null>(null);
+  const mountTimeRef = useRef(Date.now());
 
   // Use the standard hooks - useDocument returns [doc, changeDoc] or [undefined, noop]
   const [doc] = useDocument<UserDocument>(url as AutomergeUrl);
   const handle = useDocHandle<UserDocument>(url as AutomergeUrl);
 
+  // Log on mount
+  useEffect(() => {
+    log(`MOUNT url=${url.substring(0, 40)}... expectedDid=${expectedDid?.substring(0, 20) || 'none'} source=${source}`);
+    return () => {
+      const duration = Date.now() - mountTimeRef.current;
+      log(`UNMOUNT url=${url.substring(0, 40)}... after ${duration}ms`);
+    };
+  }, [url, expectedDid, source]);
+
+  // Log handle and doc state changes
+  useEffect(() => {
+    const state = (handle as unknown as { state?: string })?.state || 'no-handle';
+    const hasDoc = !!doc;
+    const hasDid = !!doc?.did;
+    const hasProfile = !!doc?.profile;
+    log(`STATE url=${url.substring(0, 40)}... handleState=${state} hasDoc=${hasDoc} hasDid=${hasDid} hasProfile=${hasProfile}`);
+  }, [url, handle, doc, doc?.did, doc?.profile]);
+
   // Effect to detect UNAVAILABLE state from handle
   useEffect(() => {
-    if (!handle) return;
+    if (!handle) {
+      log(`NO HANDLE yet for ${url.substring(0, 40)}...`);
+      return;
+    }
 
     // Check for unavailable state by polling (events not reliably typed)
     const checkState = () => {
       // DocHandle state can be: 'idle' | 'loading' | 'requesting' | 'ready' | 'unavailable' | 'deleted'
       const state = (handle as unknown as { state?: string }).state;
+
       if (state === 'unavailable' && !reportedUnavailableRef.current) {
+        log(`UNAVAILABLE detected for ${url.substring(0, 40)}...`);
         reportedUnavailableRef.current = true;
         onUnavailable(url);
       }
@@ -59,21 +89,22 @@ export function UserDocLoader({
 
   // Effect to report loaded document and react to profile changes
   useEffect(() => {
-    if (!doc) return;
+    if (!doc) {
+      log(`NO DOC yet for ${url.substring(0, 40)}...`);
+      return;
+    }
 
     const docDid = doc.did;
 
     // Wait for DID to be available (new docs may sync incrementally)
     if (!docDid) {
-      console.log(`[UserDocLoader] Doc loaded but no DID yet for ${url.substring(0, 30)} - waiting for sync`);
+      log(`Doc loaded but no DID yet for ${url.substring(0, 40)}... - waiting for sync`);
       return;
     }
 
     // Validate expectedDid if provided
     if (expectedDid && docDid !== expectedDid) {
-      console.warn(
-        `[UserDocLoader] DID mismatch for ${url.substring(0, 30)}: expected ${expectedDid.substring(0, 20)}, got ${docDid?.substring(0, 20)}`
-      );
+      log(`DID MISMATCH for ${url.substring(0, 40)}...: expected ${expectedDid.substring(0, 20)}, got ${docDid?.substring(0, 20)}`);
       // Still report it - the provider can decide what to do
     }
 
@@ -89,6 +120,9 @@ export function UserDocLoader({
     // Only report if profile data has changed
     if (profileKey !== lastReportedProfileRef.current) {
       lastReportedProfileRef.current = profileKey;
+
+      const elapsed = Date.now() - mountTimeRef.current;
+      log(`LOADED url=${url.substring(0, 40)}... did=${docDid.substring(0, 20)}... name=${doc.profile?.displayName || 'none'} elapsed=${elapsed}ms`);
 
       onLoaded(url, docDid, {
         displayName: doc.profile?.displayName,

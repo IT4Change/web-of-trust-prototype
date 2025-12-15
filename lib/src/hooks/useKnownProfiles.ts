@@ -51,6 +51,9 @@ export type ProfileSource =
   | 'external' // Registered externally (e.g., QR scan before trust)
   | 'workspace'; // Workspace identity (fallback)
 
+/** Loading state for profile documents */
+export type ProfileLoadState = 'loading' | 'loaded' | 'unavailable';
+
 /** Known profile with computed trust flags */
 export interface KnownProfile {
   did: string;
@@ -70,6 +73,8 @@ export interface KnownProfile {
   isMutualTrust: boolean;
   signatureStatus: ProfileSignatureStatus;
   lastUpdated: number;
+  /** Loading state of the profile's UserDocument */
+  loadState: ProfileLoadState;
 }
 
 /** Options for useKnownProfiles hook */
@@ -119,6 +124,7 @@ function trackedToKnown(
     isMutualTrust: isTrustGiven && isTrustReceived,
     signatureStatus: tracked.signatureStatus,
     lastUpdated: tracked.lastUpdated,
+    loadState: tracked.loadState,
   };
 }
 

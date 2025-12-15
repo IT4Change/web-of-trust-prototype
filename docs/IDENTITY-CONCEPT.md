@@ -1,16 +1,8 @@
 # Identity & Authorization Concept
 
-## Current State
-
-**Fake DIDs**: `did:key:${timestamp}-${random}` without cryptographic keys
-- No signatures
-- No verification
-- No proof of authorship
-- Trust-based (anyone can claim any DID)
-
 ## Goals
 
-1. **Cryptographic Identity**: Real `did:key` with keypair
+1. **Cryptographic Identity**: `did:key` with keypair
 2. **Signed Actions**: All mutations (votes, edits, creates) are signed
 3. **Client-side Verification**: Each client validates signatures before trusting data
 4. **Future-proof**: Support key recovery, delegation, and rotation

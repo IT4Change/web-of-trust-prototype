@@ -298,15 +298,23 @@ describe('Workspace switching behavior (unit logic)', () => {
    */
 
   describe('URL handling', () => {
-    it('should format URL correctly for workspace switch', () => {
+    it('should format URL correctly for workspace switch (query param)', () => {
       const workspaceId = 'automerge:abc123';
       const url = new URL('http://example.com');
-      url.hash = `doc=${workspaceId}`;
+      url.searchParams.set('doc', workspaceId);
 
-      expect(url.hash).toBe('#doc=automerge:abc123');
+      expect(url.searchParams.get('doc')).toBe('automerge:abc123');
+      expect(url.toString()).toBe('http://example.com/?doc=automerge%3Aabc123');
     });
 
-    it('should parse workspace ID from URL hash', () => {
+    it('should parse workspace ID from URL query param', () => {
+      const url = new URL('http://example.com/?doc=automerge:abc123');
+      const docId = url.searchParams.get('doc');
+
+      expect(docId).toBe('automerge:abc123');
+    });
+
+    it('should parse workspace ID from URL hash (backwards compat)', () => {
       const hash = '#doc=automerge:abc123';
       const urlParams = new URLSearchParams(hash.substring(1));
       const docId = urlParams.get('doc');
@@ -314,18 +322,30 @@ describe('Workspace switching behavior (unit logic)', () => {
       expect(docId).toBe('automerge:abc123');
     });
 
+    it('should prefer query param over hash', () => {
+      const url = new URL('http://example.com/?doc=query-doc#doc=hash-doc');
+      const queryDoc = url.searchParams.get('doc');
+      const hashParams = new URLSearchParams(url.hash.substring(1));
+      const hashDoc = hashParams.get('doc');
+
+      // Query param should take precedence
+      expect(queryDoc).toBe('query-doc');
+      expect(hashDoc).toBe('hash-doc');
+      // In real code, we use queryDoc first
+      const effectiveDoc = queryDoc || hashDoc;
+      expect(effectiveDoc).toBe('query-doc');
+    });
+
     it('should handle URL without doc parameter', () => {
-      const hash = '#other=value';
-      const urlParams = new URLSearchParams(hash.substring(1));
-      const docId = urlParams.get('doc');
+      const url = new URL('http://example.com/?other=value');
+      const docId = url.searchParams.get('doc');
 
       expect(docId).toBeNull();
     });
 
-    it('should handle empty hash', () => {
-      const hash = '';
-      const urlParams = new URLSearchParams(hash.substring(1));
-      const docId = urlParams.get('doc');
+    it('should handle empty URL', () => {
+      const url = new URL('http://example.com/');
+      const docId = url.searchParams.get('doc');
 
       expect(docId).toBeNull();
     });

@@ -11,7 +11,9 @@ async function ensureWorkspaceInTab(page: import('@playwright/test').Page) {
   await page.waitForTimeout(1000);
 
   const url = page.url();
-  if (!url.includes('#doc=')) {
+  // Check for doc in query param or hash (backwards compat)
+  const hasDoc = url.includes('?doc=') || url.includes('&doc=') || url.includes('#doc=');
+  if (!hasDoc) {
     // Try to create workspace from Start screen (new behavior)
     const created = await createWorkspaceFromStart(page);
     if (!created) {
@@ -25,7 +27,7 @@ async function ensureWorkspaceInTab(page: import('@playwright/test').Page) {
         const newBoardButton = page.getByText('New Board', { exact: true });
         if (await newBoardButton.isVisible({ timeout: 2000 }).catch(() => false)) {
           await newBoardButton.click();
-          await page.waitForURL(/.*#doc=.*/);
+          await page.waitForURL(/.*[?&]doc=.*|.*#doc=.*/);
           await page.waitForTimeout(500);
         }
       }

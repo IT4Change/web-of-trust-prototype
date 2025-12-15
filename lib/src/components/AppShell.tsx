@@ -235,19 +235,42 @@ export function AppShell<TDoc>({
     return () => clearInterval(interval);
   }, [workspaceUrlToLoad]);
 
-  // Listen to URL hash changes
+  // Listen to URL changes (both query params and hash for backwards compatibility)
   useEffect(() => {
-    const handleHashChange = () => {
-      const params = new URLSearchParams(window.location.hash.substring(1));
-      const newDocId = params.get('doc');
+    const handleUrlChange = () => {
+      // Priority: query param > hash (for backwards compatibility)
+      const urlParams = new URLSearchParams(window.location.search);
+      let newDocId = urlParams.get('doc');
+
+      // Fallback to hash for backwards compatibility
+      if (!newDocId) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        newDocId = hashParams.get('doc');
+
+        // If found in hash, migrate to query param
+        if (newDocId) {
+          const url = new URL(window.location.href);
+          url.searchParams.set('doc', newDocId);
+          // Remove doc from hash
+          const hashParams = new URLSearchParams(url.hash.substring(1));
+          hashParams.delete('doc');
+          url.hash = hashParams.toString() ? hashParams.toString() : '';
+          window.history.replaceState(null, '', url.toString());
+        }
+      }
+
       if (newDocId && newDocId !== documentId) {
         setDocumentId(newDocId as DocumentId);
         saveDocumentId(storagePrefix, newDocId);
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
   }, [documentId, storagePrefix]);
 
   /**
@@ -312,10 +335,12 @@ export function AppShell<TDoc>({
     setWorkspaceUrlToLoad(null); // Clear loading URL
     setIsOnboarding(false);
 
-    // Update URL if not already there
-    const urlParams = new URLSearchParams(window.location.hash.substring(1));
+    // Update URL if not already there (use query param for link preview compatibility)
+    const urlParams = new URLSearchParams(window.location.search);
     if (!urlParams.get('doc')) {
-      window.location.hash = `doc=${loadedDocumentId}`;
+      const url = new URL(window.location.href);
+      url.searchParams.set('doc', loadedDocumentId);
+      window.history.replaceState(null, '', url.toString());
     }
   }, [storagePrefix]);
 
@@ -351,9 +376,26 @@ export function AppShell<TDoc>({
    * Main initialization function
    */
   const initializeDocument = useCallback(async () => {
-    // Check URL for shared document ID
-    const urlParams = new URLSearchParams(window.location.hash.substring(1));
-    const urlDocId = urlParams.get('doc');
+    // Check URL for shared document ID (query param preferred, hash for backwards compat)
+    const queryParams = new URLSearchParams(window.location.search);
+    let urlDocId = queryParams.get('doc');
+
+    // Fallback to hash for backwards compatibility
+    if (!urlDocId) {
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      urlDocId = hashParams.get('doc');
+
+      // If found in hash, migrate to query param
+      if (urlDocId) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('doc', urlDocId);
+        // Remove doc from hash
+        hashParams.delete('doc');
+        url.hash = hashParams.toString() ? hashParams.toString() : '';
+        window.history.replaceState(null, '', url.toString());
+      }
+    }
+
     const savedDocId = loadDocumentId(storagePrefix);
     const savedIdentity = loadSharedIdentity();
 
@@ -465,16 +507,19 @@ export function AppShell<TDoc>({
     setWorkspaceUrlToLoad(null); // Clear any loading state
     setIsOnboarding(false); // Exit onboarding/start state
 
-    // Push new hash
+    // Use query param for link preview compatibility
     const url = new URL(window.location.href);
-    url.hash = `doc=${docId}`;
+    url.searchParams.set('doc', docId);
     window.history.pushState(null, '', url.toString());
   }, [repo, createEmptyDocument, storagePrefix]);
 
   const handleCreateNewFromLoading = useCallback(() => {
     clearDocumentId(storagePrefix);
     setWorkspaceUrlToLoad(null);
-    window.location.hash = '';
+    // Clear doc from URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('doc');
+    window.history.replaceState(null, '', url.toString());
     handleNewDocument();
   }, [storagePrefix, handleNewDocument]);
 
@@ -483,7 +528,10 @@ export function AppShell<TDoc>({
     console.log('[AppShell] Canceling document loading, returning to start');
     setWorkspaceUrlToLoad(null);
     clearDocumentId(storagePrefix);
-    window.location.hash = '';
+    // Clear doc from URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('doc');
+    window.history.replaceState(null, '', url.toString());
     setIsOnboarding(true);
   }, [storagePrefix]);
 
@@ -492,7 +540,10 @@ export function AppShell<TDoc>({
     console.log('[AppShell] Going to start screen');
     setDocumentId(null);
     clearDocumentId(storagePrefix);
-    window.location.hash = '';
+    // Clear doc from URL
+    const url = new URL(window.location.href);
+    url.searchParams.delete('doc');
+    window.history.replaceState(null, '', url.toString());
     setIsOnboarding(true);
   }, [storagePrefix]);
 

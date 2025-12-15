@@ -133,8 +133,8 @@ export async function createWorkspaceFromStart(page: Page) {
     await expect(submitBtn).toBeEnabled({ timeout: 2000 });
     await submitBtn.click();
 
-    // Wait for URL to contain doc ID
-    await page.waitForURL(/.*#doc=.*/, { timeout: 10000 });
+    // Wait for URL to contain doc ID (query param or hash for backwards compat)
+    await page.waitForURL(/.*[?&]doc=.*|.*#doc=.*/, { timeout: 10000 });
 
     // Wait for workspace content to fully load
     await page.waitForTimeout(500);
@@ -156,7 +156,9 @@ export async function ensureOnBoard(page: Page) {
   await page.waitForTimeout(1000);
 
   const url = page.url();
-  if (!url.includes('#doc=')) {
+  // Check for doc in query param or hash (backwards compat)
+  const hasDoc = url.includes('?doc=') || url.includes('&doc=') || url.includes('#doc=');
+  if (!hasDoc) {
     // Check if we're on the Start screen (new behavior)
     const isStartScreen = await page.getByRole('button', { name: /workspace erstellen/i })
       .isVisible({ timeout: 2000 })
@@ -173,7 +175,9 @@ export async function ensureOnBoard(page: Page) {
         // If workspace switcher doesn't work, the app might auto-create a doc
         // Wait a bit and check again
         await page.waitForTimeout(2000);
-        if (!page.url().includes('#doc=')) {
+        const currentUrl = page.url();
+        const hasDocNow = currentUrl.includes('?doc=') || currentUrl.includes('&doc=') || currentUrl.includes('#doc=');
+        if (!hasDocNow) {
           // Last resort: reload and hope for auto-creation
           await page.reload();
           await page.waitForLoadState('networkidle');

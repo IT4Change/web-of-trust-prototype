@@ -11,13 +11,15 @@ import {
  * Validates that documents can be shared via URL and persist across sessions
  */
 test.describe('URL Sharing', () => {
-  test('should create document with URL hash', async ({ page }) => {
+  test('should create document with URL parameter', async ({ page }) => {
     await ensureOnBoard(page);
 
-    // URL should contain #doc= with a valid document ID
+    // URL should contain ?doc= with a valid document ID (query param for link preview compatibility)
     const url = page.url();
-    expect(url).toContain('#doc=');
-    expect(url).toMatch(/#doc=[A-Za-z0-9]+/);
+    // Accept both query param (new) and hash (backwards compat)
+    const hasDoc = url.includes('?doc=') || url.includes('&doc=') || url.includes('#doc=');
+    expect(hasDoc).toBe(true);
+    expect(url).toMatch(/[?&#]doc=[A-Za-z0-9]+/);
   });
 
   test('should maintain document ID in URL when adding content', async ({
@@ -26,7 +28,9 @@ test.describe('URL Sharing', () => {
     await ensureOnBoard(page);
 
     const initialUrl = page.url();
-    const docId = initialUrl.split('#doc=')[1];
+    // Extract doc ID from query param or hash
+    const urlObj = new URL(initialUrl);
+    const docId = urlObj.searchParams.get('doc') || urlObj.hash.match(/doc=([^&]+)/)?.[1];
 
     // Add content
     await createAssumption(page, 'Testing URL persistence');
@@ -107,8 +111,10 @@ test.describe('URL Sharing', () => {
       await page1.waitForLoadState('networkidle');
       await page1.waitForTimeout(1000);
 
-      // Ensure we have a document
-      if (!page1.url().includes('#doc=')) {
+      // Ensure we have a document (check query param or hash)
+      const url1 = page1.url();
+      const hasDoc = url1.includes('?doc=') || url1.includes('&doc=') || url1.includes('#doc=');
+      if (!hasDoc) {
         // Try Start screen first (new behavior)
         const created = await createWorkspaceFromStart(page1);
         if (!created) {

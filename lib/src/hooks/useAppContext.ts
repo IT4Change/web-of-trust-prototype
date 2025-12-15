@@ -680,9 +680,10 @@ export function useAppContext<TData = unknown>(
       // Use AppShell callback (no page reload)
       onSwitchWorkspace(workspaceId);
     } else {
-      // Fallback to page reload (legacy behavior)
-      window.location.hash = `#doc=${workspaceId}`;
-      window.location.reload();
+      // Fallback to page reload (legacy behavior) - use query param for link preview compatibility
+      const url = new URL(window.location.href);
+      url.searchParams.set('doc', workspaceId);
+      window.location.href = url.toString();
     }
   }, [onSwitchWorkspace]);
 
@@ -1165,8 +1166,8 @@ export function useAppContext<TData = unknown>(
       }
     : null;
 
-  // Build document URL for sharing
-  const documentUrl = documentId ? `${window.location.origin}${window.location.pathname}#doc=${documentId}` : undefined;
+  // Build document URL for sharing (use query param for link preview compatibility)
+  const documentUrl = documentId ? `${window.location.origin}${window.location.pathname}?doc=${documentId}` : undefined;
 
   // Handler to update workspace metadata (name, avatar)
   const handleUpdateWorkspace = useCallback((updates: { name?: string; avatar?: string }) => {

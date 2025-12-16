@@ -432,21 +432,12 @@ export function DebugDashboard({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-4">
-            <button
-              onClick={loadDocuments}
-              disabled={isLoading}
-              className="btn btn-sm btn-outline"
-            >
-              {isLoading ? 'Loading...' : 'Reload'}
-            </button>
-            <button
-              onClick={onClose}
-              className="btn btn-sm btn-circle btn-ghost"
-            >
-              ✕
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="btn btn-sm btn-circle btn-ghost"
+          >
+            ✕
+          </button>
         </div>
 
         {/* Main View Tabs */}

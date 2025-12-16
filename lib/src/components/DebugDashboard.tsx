@@ -506,6 +506,7 @@ export function DebugDashboard({
                       <th>Avatar</th>
                       <th>Name</th>
                       <th>DID</th>
+                      <th>UserDoc URL</th>
                       <th>Laden</th>
                       <th>Trust-Status</th>
                       <th>Entdeckung</th>
@@ -538,6 +539,13 @@ export function DebugDashboard({
                         </td>
                         <td className="font-mono text-xs">
                           <span title={did}>{did.substring(0, 25)}...</span>
+                        </td>
+                        <td className="font-mono text-xs">
+                          {profile.userDocUrl ? (
+                            <span title={profile.userDocUrl}>{profile.userDocUrl.substring(0, 30)}...</span>
+                          ) : (
+                            <span className="text-gray-500 italic">-</span>
+                          )}
                         </td>
                         <td>
                           {/* Load state - shows if UserDoc was loaded successfully */}

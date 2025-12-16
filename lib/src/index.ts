@@ -187,3 +187,6 @@ export {
   formatRelativeTime,
   formatFullDateTime,
 } from './utils/time';
+
+// Data Layer exports (new abstraction)
+export * from './data';

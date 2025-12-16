@@ -57,7 +57,7 @@ interface Item {
   // Gemeinsame optionale Felder (für Cross-Modul-Features)
   title?: string;
   description?: string;
-  geo?: { lat: number; lng: number; label?: string };
+  geo?: GeoJSON.Feature;             // GeoJSON Feature (Point, Polygon, LineString, etc.)
   dateTime?: { start: number; end?: number; allDay?: boolean };
   tags?: string[];
 
@@ -178,9 +178,10 @@ interface ItemFilter {
 
   // Geo-Filter: true = "hat Location", oder spezifische Query
   geo?: true | {
-    nearLat: number;
-    nearLng: number;
-    radiusKm: number;
+    near: { lat: number; lng: number };  // Zentrum
+    radiusKm: number;                     // Radius in km
+  } | {
+    within: GeoJSON.Polygon;              // Innerhalb eines Polygons
   };
 
   // DateTime-Filter: true = "hat Datum", oder spezifische Query

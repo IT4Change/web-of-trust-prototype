@@ -32,8 +32,9 @@ export function AssumptionList({
   onCreate,
 }: AssumptionListProps) {
   const validAssumptions = assumptions.filter((a): a is Assumption => a !== null);
+  // Build tag map with lowercase keys for case-insensitive lookup
   const tagMap = tags.reduce<Record<string, Tag>>((acc, tag) => {
-    acc[tag.id] = tag;
+    acc[tag.id.toLowerCase()] = tag;
     return acc;
   }, {});
 
@@ -61,7 +62,7 @@ export function AssumptionList({
           assumption={assumption}
           votes={getVotesForAssumption(assumption.id)}
           edits={getEditsForAssumption(assumption.id)}
-          tags={assumption.tagIds.map((id) => tagMap[id]).filter((t): t is Tag => !!t)}
+          tags={assumption.tagIds.map((id) => tagMap[id.toLowerCase()]).filter((t): t is Tag => !!t)}
           availableTags={tags}
           voteSummary={getVoteSummary(assumption.id)}
           onVote={onVote}

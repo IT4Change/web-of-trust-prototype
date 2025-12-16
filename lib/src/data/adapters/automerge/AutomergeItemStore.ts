@@ -120,12 +120,16 @@ export class AutomergeItemStore implements ItemStore {
 
     const now = Date.now();
 
+    // Deep clone changes to avoid "Cannot create a reference to an existing document object" error
+    // This happens when changes contain references to objects already in the document (e.g., via spread operators)
+    const clonedChanges = JSON.parse(JSON.stringify(changes)) as Partial<Item>;
+
     this.docHandle.change((d) => {
       const item = d.items[id];
       if (!item) return;
 
       // Apply changes (except id and createdAt)
-      Object.entries(changes).forEach(([key, value]) => {
+      Object.entries(clonedChanges).forEach(([key, value]) => {
         if (key !== 'id' && key !== 'createdAt') {
           (item as unknown as Record<string, unknown>)[key] = value;
         }

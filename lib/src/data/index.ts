@@ -113,3 +113,27 @@ export type {
   AutomergeRelationsDoc,
   AutomergeWorkspaceDoc,
 } from './adapters/automerge';
+
+// Migration Helpers
+export {
+  // Legacy -> Items/Relations
+  assumptionToItem,
+  voteToRelation,
+  migrateLegacyData,
+  // Items/Relations -> Legacy
+  itemToAssumption,
+  relationToVote,
+  // Helpers
+  getVoteFromRelations,
+  getVotesForAssumptionFromRelations,
+  computeVoteSummaryFromRelations,
+} from './migration';
+export type {
+  LegacyAssumption,
+  LegacyVote,
+  LegacyTag,
+  LegacyEditEntry,
+  LegacyOpinionGraphData,
+  NarrativeExtension,
+  VoteRelationMetadata,
+} from './migration';

@@ -378,7 +378,7 @@ export function WorkspaceLoadingContent({
           {showCreateNew && onCreateNew && (
             <div className="pt-4 border-t border-base-300">
               <p className="text-sm text-base-content/60 mb-3">
-                Das Workspace-Dokument scheint nicht verfügbar zu sein.
+                Das Workspace-Dokument braucht dieses mal etwas länger um zu laden. Wenn du nicht warten möchtest, kannst du auch einen neuen Workspace erstellen.
               </p>
               <button
                 className="btn btn-primary btn-sm"

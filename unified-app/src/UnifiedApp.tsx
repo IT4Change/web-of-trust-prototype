@@ -49,6 +49,8 @@ export interface UnifiedAppProps {
 export function UnifiedApp({
   documentId,
   currentUserDid,
+  privateKey,
+  publicKey,
   displayName,
   onResetIdentity,
   onNewDocument,
@@ -164,7 +166,8 @@ export function UnifiedApp({
                   <NarrativeModuleWrapper
                     doc={doc}
                     docHandle={docHandle}
-                    identity={{ did: currentUserDid }}
+                    identity={{ did: currentUserDid, publicKey, displayName }}
+                    privateKey={privateKey}
                     hiddenUserDids={ctx.hiddenUserDids}
                   />
                 )}

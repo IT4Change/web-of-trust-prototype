@@ -366,6 +366,11 @@ export function AppShell<TDoc>({
     console.log('[AppShell] Starting workspace loading:', normalizedUrl.substring(0, 30));
     setWorkspaceUrlToLoad(normalizedUrl);
     setIsOnboarding(false);
+
+    // Update browser URL to reflect workspace change
+    const url = new URL(window.location.href);
+    url.searchParams.set('doc', normalizedUrl);
+    window.history.pushState(null, '', url.toString());
   }, [storagePrefix]);
 
   /**

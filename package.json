@@ -5,7 +5,6 @@
   "type": "module",
   "workspaces": [
     "dank-app",
-    "data-test-app",
     "map-app",
     "market-app",
     "narrative-app",
@@ -20,7 +19,7 @@
     "dev:market": "npm run dev --workspace=market-app",
     "dev:unified": "npm run dev --workspace=unified-app",
     "dev:dank": "npm run dev --workspace=dank-app",
-    "build": "run-s build:lib build:apps && npm run build --workspace=data-test-app",
+    "build": "run-s build:lib build:apps",
     "build:lib": "npm run build --workspace=lib",
     "build:apps": "run-p build:narrative build:map build:market build:unified build:dank",
     "build:narrative": "npm run build --workspace=narrative-app",
@@ -29,9 +28,7 @@
     "build:unified": "npm run build --workspace=unified-app",
     "build:dank": "npm run build --workspace=dank-app",
     "lint": "npm run lint --workspaces",
-    "test": "npm run test --workspace=lib --workspace=narrative-app",
-    "dev:data:test": "npm run dev --workspace=data-test-app",
-    "build:data:test": "npm run build --workspace=data-test-app"
+    "test": "npm run test --workspace=lib --workspace=narrative-app"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

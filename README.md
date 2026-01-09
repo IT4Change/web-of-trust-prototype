@@ -1,9 +1,9 @@
 # Narrative
 
-[![Deploy](https://github.com/it4change/narrative/actions/workflows/deploy.yml/badge.svg)](https://github.com/it4change/narrative/actions/workflows/deploy.yml)
-[![Tests](https://github.com/it4change/narrative/actions/workflows/test.yml/badge.svg)](https://github.com/it4change/narrative/actions/workflows/test.yml)
+[![Deploy](https://github.com/it4change/web-of-trust/actions/workflows/deploy.yml/badge.svg)](https://github.com/it4change/web-of-trust/actions/workflows/deploy.yml)
+[![Tests](https://github.com/it4change/web-of-trust/actions/workflows/test.yml/badge.svg)](https://github.com/it4change/web-of-trust/actions/workflows/test.yml)
 
-**Live Demo**: [web-of-trust.de](https://web-of-trust.de)
+**Live Demo**: [it4change.github.io/web-of-trust](https://it4change.github.io/web-of-trust/)
 
 Local-first Collaboration Platform mit dezentraler Identität und Web of Trust.
 
@@ -19,11 +19,11 @@ Local-first Collaboration Platform mit dezentraler Identität und Web of Trust.
 
 | App | Beschreibung | URL |
 |-----|--------------|-----|
-| **Unified** | All-in-One PWA mit allen Modulen | [/unified/](https://web-of-trust.de/unified/) |
-| **Narrative** | Assumptions & Meinungsbilder | [/narrative/](https://web-of-trust.de/narrative/) |
-| **Map** | Kollaborative Karten | [/map/](https://web-of-trust.de/map/) |
-| **Market** | Dezentraler Marktplatz | [/market/](https://web-of-trust.de/market/) |
-| **Dank** | Voucher & Gutschein-System | [/dank/](https://web-of-trust.de/dank/) |
+| **Unified** | All-in-One PWA mit allen Modulen | [/web-of-trust/](https://it4change.github.io/web-of-trust/) |
+| **Narrative** | Assumptions & Meinungsbilder | [/web-of-trust/narrative/](https://it4change.github.io/web-of-trust/narrative/) |
+| **Map** | Kollaborative Karten | [/web-of-trust/map/](https://it4change.github.io/web-of-trust/map/) |
+| **Market** | Dezentraler Marktplatz | [/web-of-trust/market/](https://it4change.github.io/web-of-trust/market/) |
+| **Dank** | Voucher & Gutschein-System | [/web-of-trust/dank/](https://it4change.github.io/web-of-trust/dank/) |
 
 ## Architektur
 
@@ -243,7 +243,7 @@ GitHub Actions deployed automatisch bei Push auf `main`:
 2. Alle Apps werden parallel gebaut
 3. Deployment auf GitHub Pages
 
-**Custom Domain**: `web-of-trust.de`
+**GitHub Pages**: `https://it4change.github.io/web-of-trust/`
 
 ## Dokumentation
 

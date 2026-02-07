@@ -26,12 +26,12 @@ export function createViteConfig(options: AppViteConfigOptions = {}) {
   const { appName, port = 3000, extend = {} } = options;
 
   const isGithubActions = process.env.GITHUB_ACTIONS === 'true';
-  // GitHub Pages deployment: all apps deploy under /web-of-trust/
-  // unified app at /web-of-trust/, others at /web-of-trust/{appName}/
+  // GitHub Pages deployment: all apps deploy under /web-of-trust-prototype/
+  // unified app at /web-of-trust-prototype/, others at /web-of-trust-prototype/{appName}/
   const base = isGithubActions
     ? appName && appName !== 'unified'
-      ? `/web-of-trust/${appName}/`
-      : '/web-of-trust/'
+      ? `/web-of-trust-prototype/${appName}/`
+      : '/web-of-trust-prototype/'
     : '/';
 
   // Monorepo root directory (one level up from app directories)

@@ -4,10 +4,10 @@
 
 # Narrative
 
-[![Deploy](https://github.com/it4change/web-of-trust/actions/workflows/deploy.yml/badge.svg)](https://github.com/it4change/web-of-trust/actions/workflows/deploy.yml)
-[![Tests](https://github.com/it4change/web-of-trust/actions/workflows/test.yml/badge.svg)](https://github.com/it4change/web-of-trust/actions/workflows/test.yml)
+[![Deploy](https://github.com/it4change/web-of-trust-prototype/actions/workflows/deploy.yml/badge.svg)](https://github.com/it4change/web-of-trust-prototype/actions/workflows/deploy.yml)
+[![Tests](https://github.com/it4change/web-of-trust-prototype/actions/workflows/test.yml/badge.svg)](https://github.com/it4change/web-of-trust-prototype/actions/workflows/test.yml)
 
-**Live Demo**: [it4change.github.io/web-of-trust](https://it4change.github.io/web-of-trust/)
+**Live Demo**: [it4change.github.io/web-of-trust-prototype](https://it4change.github.io/web-of-trust-prototype/)
 
 Local-first Collaboration Platform mit dezentraler Identität und Web of Trust.
 
@@ -23,11 +23,11 @@ Local-first Collaboration Platform mit dezentraler Identität und Web of Trust.
 
 | App | Beschreibung | URL |
 |-----|--------------|-----|
-| **Unified** | All-in-One PWA mit allen Modulen | [/web-of-trust/](https://it4change.github.io/web-of-trust/) |
-| **Narrative** | Assumptions & Meinungsbilder | [/web-of-trust/narrative/](https://it4change.github.io/web-of-trust/narrative/) |
-| **Map** | Kollaborative Karten | [/web-of-trust/map/](https://it4change.github.io/web-of-trust/map/) |
-| **Market** | Dezentraler Marktplatz | [/web-of-trust/market/](https://it4change.github.io/web-of-trust/market/) |
-| **Dank** | Voucher & Gutschein-System | [/web-of-trust/dank/](https://it4change.github.io/web-of-trust/dank/) |
+| **Unified** | All-in-One PWA mit allen Modulen | [/web-of-trust-prototype/](https://it4change.github.io/web-of-trust-prototype/) |
+| **Narrative** | Assumptions & Meinungsbilder | [/web-of-trust-prototype/narrative/](https://it4change.github.io/web-of-trust-prototype/narrative/) |
+| **Map** | Kollaborative Karten | [/web-of-trust-prototype/map/](https://it4change.github.io/web-of-trust-prototype/map/) |
+| **Market** | Dezentraler Marktplatz | [/web-of-trust-prototype/market/](https://it4change.github.io/web-of-trust-prototype/market/) |
+| **Dank** | Voucher & Gutschein-System | [/web-of-trust-prototype/dank/](https://it4change.github.io/web-of-trust-prototype/dank/) |
 
 ## Architektur
 
@@ -247,7 +247,7 @@ GitHub Actions deployed automatisch bei Push auf `main`:
 2. Alle Apps werden parallel gebaut
 3. Deployment auf GitHub Pages
 
-**GitHub Pages**: `https://it4change.github.io/web-of-trust/`
+**GitHub Pages**: `https://it4change.github.io/web-of-trust-prototype/`
 
 ## Dokumentation
 

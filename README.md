@@ -1,8 +1,8 @@
-# Narrative
-
 > [!CAUTION]
 > **Dieses Repository ist ein Prototyp und wird nicht mehr aktiv weiterentwickelt.**
 > Die aktive Entwicklung des Web of Trust findet hier statt: **[antontranelis/web-of-trust](https://github.com/antontranelis/web-of-trust)**
+
+# Narrative
 
 [![Deploy](https://github.com/it4change/web-of-trust/actions/workflows/deploy.yml/badge.svg)](https://github.com/it4change/web-of-trust/actions/workflows/deploy.yml)
 [![Tests](https://github.com/it4change/web-of-trust/actions/workflows/test.yml/badge.svg)](https://github.com/it4change/web-of-trust/actions/workflows/test.yml)

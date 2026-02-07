@@ -33,39 +33,5 @@ jobs:
       - name: Run narrative-app unit tests
         run: npm run test --workspace=narrative-app -- --run
 
-  e2e-tests:
-    name: E2E Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build project
-        run: npm run build
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-        working-directory: ./narrative-app
-
-      - name: Run E2E tests
-        run: npx playwright test
-        working-directory: ./narrative-app
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: playwright-report
-          path: narrative-app/playwright-report/
-          retention-days: 30
+  # E2E tests disabled - this is a prototype repository, no longer actively maintained.
+  # See https://github.com/antontranelis/web-of-trust for the active project.
